@@ -1,6 +1,6 @@
 # 用户权限 UI 交互规范
 
-> **版本**: v1.3
+> **版本**: v1.4
 > **日期**: 2026-02-04
 > **状态**: 设计完成
 > **适用范围**: 功能权限、配额限制的前端 UI 交互
@@ -599,7 +599,539 @@ T3 用户的 Projects 为 unlimited，显示方式：
 
 ---
 
-## 十一、修订历史
+## 十一、试用期过期 UI 组件
+
+> 本章节定义 t1 用户试用期过期后的 UI 交互规范。
+
+### 11.1 试用期状态提醒
+
+#### 11.1.1 TrialStatusBanner 组件
+
+**展示时机**:
+
+| 剩余天数 | Banner 样式 | 可关闭 | 展示位置 |
+|:-------:|------------|:-----:|---------|
+| 7-4 天 | `info` (蓝色) | ✅ | 页面顶部，Dashboard/Editor |
+| 3-1 天 | `warning` (橙色) | ❌ | 页面顶部，Dashboard/Editor |
+| 0 天 (当天) | `urgent` (红色) | ❌ | 页面顶部 + Modal 弹窗 |
+| 已过期 | `expired` (灰色) | ❌ | 持续显示 |
+
+**组件实现**:
+
+```tsx
+// components/trial/TrialStatusBanner.tsx
+
+interface TrialStatusBannerProps {
+  daysRemaining: number;
+  onUpgrade: () => void;
+  onDismiss?: () => void;
+}
+
+export function TrialStatusBanner({ daysRemaining, onUpgrade, onDismiss }: TrialStatusBannerProps) {
+  const variant = useMemo(() => {
+    if (daysRemaining <= 0) return 'expired';
+    if (daysRemaining <= 1) return 'urgent';
+    if (daysRemaining <= 3) return 'warning';
+    return 'info';
+  }, [daysRemaining]);
+
+  const canDismiss = daysRemaining > 3;
+
+  const variantStyles = {
+    info: 'bg-blue-50 border-blue-200 text-blue-800',
+    warning: 'bg-amber-50 border-amber-200 text-amber-800',
+    urgent: 'bg-red-50 border-red-200 text-red-800',
+    expired: 'bg-slate-100 border-slate-300 text-slate-700',
+  };
+
+  const messages = {
+    info: `🎉 试用期还剩 ${daysRemaining} 天，探索所有 Pro 功能`,
+    warning: `⚠️ 试用期还剩 ${daysRemaining} 天，升级后继续使用`,
+    urgent: `🔔 试用期今天结束！立即升级保留所有功能`,
+    expired: `⏰ 试用期已结束，项目已变为只读模式`,
+  };
+
+  const ctaText = {
+    info: '查看套餐',
+    warning: '立即升级',
+    urgent: '立即升级',
+    expired: '升级解锁',
+  };
+
+  return (
+    <div className={cn(
+      'flex items-center justify-between px-4 py-2.5 border-b',
+      variantStyles[variant]
+    )}>
+      <span className="text-sm font-medium">{messages[variant]}</span>
+      <div className="flex items-center gap-2">
+        <Button
+          size="sm"
+          variant={variant === 'urgent' || variant === 'expired' ? 'default' : 'outline'}
+          onClick={onUpgrade}
+        >
+          {ctaText[variant]}
+        </Button>
+        {canDismiss && onDismiss && (
+          <Button size="sm" variant="ghost" onClick={onDismiss}>
+            <X className="w-4 h-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+**Banner 视觉示例**:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🎉 试用期还剩 5 天，探索所有 Pro 功能          [查看套餐] [✕]        │  ← info (可关闭)
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ ⚠️ 试用期还剩 2 天，升级后继续使用              [立即升级]           │  ← warning (不可关闭)
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ 🔔 试用期今天结束！立即升级保留所有功能          [立即升级]           │  ← urgent (不可关闭)
+└─────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ ⏰ 试用期已结束，项目已变为只读模式              [升级解锁]           │  ← expired (不可关闭)
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### 11.1.2 TrialExpiredModal 组件
+
+**触发时机**: 试用期结束当天首次登录 / 首次进入 Dashboard
+
+```tsx
+// components/trial/TrialExpiredModal.tsx
+
+interface TrialExpiredModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onUpgrade: () => void;
+}
+
+export function TrialExpiredModal({ isOpen, onClose, onUpgrade }: TrialExpiredModalProps) {
+  return (
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center gap-2">
+            <Clock className="w-5 h-5 text-amber-500" />
+            <DialogTitle>试用期已结束</DialogTitle>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4 py-4">
+          <p className="text-slate-600">
+            您的 7 天免费试用已结束。感谢您的体验！
+          </p>
+
+          <div className="bg-slate-50 rounded-lg p-4 space-y-2">
+            <p className="font-medium text-slate-900">升级后可以：</p>
+            <ul className="text-sm text-slate-600 space-y-1.5">
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-500" />
+                继续编辑您的项目
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-500" />
+                创建更多项目和文件夹
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-500" />
+                使用 AI 生成功能
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-500" />
+                导出 ZIP 文件
+              </li>
+            </ul>
+          </div>
+
+          <p className="text-sm text-slate-500">
+            您的项目数据已安全保存，升级后可立即恢复编辑。
+          </p>
+        </div>
+
+        <DialogFooter className="flex gap-2">
+          <Button variant="ghost" onClick={onClose}>
+            以后再说
+          </Button>
+          <Button onClick={onUpgrade}>
+            查看套餐
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+```
+
+**Modal 视觉示例**:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ⏰ 试用期已结束                                          [✕]   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  您的 7 天免费试用已结束。感谢您的体验！                          │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ 升级后可以：                                              │   │
+│  │ ✓ 继续编辑您的项目                                        │   │
+│  │ ✓ 创建更多项目和文件夹                                    │   │
+│  │ ✓ 使用 AI 生成功能                                        │   │
+│  │ ✓ 导出 ZIP 文件                                           │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  您的项目数据已安全保存，升级后可立即恢复编辑。                   │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│                              [以后再说]  [查看套餐]              │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 十二、编辑器只读模式 UI
+
+> t1 用户试用期过期后，已有项目进入只读模式。
+
+### 12.1 只读模式检测
+
+```tsx
+// hooks/useEditorReadOnly.ts
+
+export function useEditorReadOnly(projectId: string) {
+  const { tier, isWithinTrialPeriod } = useEntitlement();
+  const [isReadOnly, setIsReadOnly] = useState(false);
+  const [readOnlyReason, setReadOnlyReason] = useState<string | null>(null);
+
+  useEffect(() => {
+    // t1 试用期过期 → 只读
+    if (tier === 't1' && !isWithinTrialPeriod) {
+      setIsReadOnly(true);
+      setReadOnlyReason('trial_expired');
+      return;
+    }
+
+    // 检查项目是否因降级被锁定
+    checkProjectLockStatus(projectId).then((lockStatus) => {
+      if (lockStatus?.is_read_only) {
+        setIsReadOnly(true);
+        setReadOnlyReason(lockStatus.read_only_reason);
+      }
+    });
+  }, [tier, isWithinTrialPeriod, projectId]);
+
+  return { isReadOnly, readOnlyReason };
+}
+```
+
+### 12.2 EditorReadOnlyOverlay 组件
+
+**只读时编辑器的 UI 表现**:
+
+| 元素 | 正常模式 | 只读模式 |
+|------|---------|---------|
+| Canvas | 可交互 | 禁用所有交互，显示半透明遮罩 |
+| 工具栏 | 可用 | 全部禁用 + `opacity-50` |
+| 右侧属性面板 | 可用 | 全部禁用 + `opacity-50` |
+| 顶部 Banner | 无 | 显示只读提示 Banner |
+| 保存按钮 | 可用 | 隐藏 |
+| 导出 PDF | 可用 | 可用 (保留) |
+| 导出 ZIP | 可用 | 禁用 + 🔒 |
+
+```tsx
+// components/editor/EditorReadOnlyOverlay.tsx
+
+interface EditorReadOnlyOverlayProps {
+  reason: 'trial_expired' | 'tier_downgrade' | 'grace_period';
+  onUpgrade: () => void;
+}
+
+export function EditorReadOnlyOverlay({ reason, onUpgrade }: EditorReadOnlyOverlayProps) {
+  const messages = {
+    trial_expired: {
+      title: '试用期已结束',
+      description: '项目为只读模式，升级后可继续编辑',
+      cta: '升级解锁编辑',
+    },
+    tier_downgrade: {
+      title: '订阅已降级',
+      description: '此项目超出当前套餐配额，升级后可恢复编辑',
+      cta: '升级恢复编辑',
+    },
+    grace_period: {
+      title: '即将锁定',
+      description: '宽限期结束后此项目将变为只读',
+      cta: '续订保留',
+    },
+  };
+
+  const { title, description, cta } = messages[reason];
+
+  return (
+    <>
+      {/* 顶部 Banner */}
+      <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Lock className="w-4 h-4 text-amber-600" />
+          <span className="text-sm font-medium text-amber-800">{title}</span>
+          <span className="text-sm text-amber-600">· {description}</span>
+        </div>
+        <Button size="sm" onClick={onUpgrade}>
+          {cta}
+        </Button>
+      </div>
+
+      {/* Canvas 遮罩 (仅视觉提示，实际禁用由 Editor 组件处理) */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/80 text-white px-4 py-2 rounded-lg flex items-center gap-2">
+          <Eye className="w-4 h-4" />
+          <span className="text-sm">只读模式 · 可查看和导出 PDF</span>
+        </div>
+      </div>
+    </>
+  );
+}
+```
+
+**编辑器只读模式视觉示例**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 🔒 试用期已结束 · 项目为只读模式，升级后可继续编辑        [升级解锁编辑]     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ ┌───────────────────────────────────────────────────────────────────────┐   │
+│ │  [工具栏 - 全部禁用 opacity-50]                                        │   │
+│ ├───────────────────────────────────────────────────────────────────────┤   │
+│ │                                                                       │   │
+│ │                                                                       │   │
+│ │                         Canvas 内容                                   │   │
+│ │                       (可查看，不可编辑)                               │   │
+│ │                                                                       │   │
+│ │                                                                       │   │
+│ │         ┌───────────────────────────────────────┐                     │   │
+│ │         │  👁 只读模式 · 可查看和导出 PDF        │                     │   │
+│ │         └───────────────────────────────────────┘                     │   │
+│ └───────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 12.3 只读模式下的操作限制
+
+| 操作 | 是否允许 | UI 表现 |
+|------|:-------:|---------|
+| 查看 Canvas | ✅ | 正常显示 |
+| 缩放/平移 | ✅ | 正常交互 |
+| 选择元素 | ❌ | 点击无反应 |
+| 移动/调整元素 | ❌ | 禁用 |
+| 添加/删除元素 | ❌ | 工具栏禁用 |
+| 修改属性 | ❌ | 属性面板禁用 |
+| 撤销/重做 | ❌ | 快捷键不响应 |
+| 复制/粘贴 | ❌ | 快捷键不响应 |
+| 导出 PDF | ✅ | 正常可用 |
+| 导出 ZIP | ❌ | 按钮禁用 + 🔒 |
+| 打印 | ✅ | 正常可用 |
+
+---
+
+## 十三、Tier 降级资源锁定 UI
+
+> 用户降级后，超出配额的资源显示锁定状态。
+
+### 13.1 Dashboard 资源卡片锁定状态
+
+#### 13.1.1 LockedProjectCard 组件
+
+```tsx
+// components/dashboard/LockedProjectCard.tsx
+
+interface LockedProjectCardProps {
+  project: Project;
+  lockReason: 'tier_downgrade' | 'grace_period';
+  gracePeriodEnd?: Date;
+  onUpgrade: () => void;
+}
+
+export function LockedProjectCard({
+  project,
+  lockReason,
+  gracePeriodEnd,
+  onUpgrade
+}: LockedProjectCardProps) {
+  const isGracePeriod = lockReason === 'grace_period';
+
+  return (
+    <Card className={cn(
+      'relative overflow-hidden',
+      isGracePeriod ? 'border-amber-300' : 'border-slate-300 opacity-75'
+    )}>
+      {/* 锁定标识 */}
+      <div className={cn(
+        'absolute top-2 right-2 px-2 py-1 rounded text-xs font-medium flex items-center gap-1',
+        isGracePeriod
+          ? 'bg-amber-100 text-amber-700'
+          : 'bg-slate-100 text-slate-600'
+      )}>
+        <Lock className="w-3 h-3" />
+        {isGracePeriod ? '即将锁定' : '只读'}
+      </div>
+
+      {/* 项目缩略图 */}
+      <div className="aspect-video bg-slate-100 relative">
+        <img src={project.thumbnail} alt={project.name} className="w-full h-full object-cover" />
+        {!isGracePeriod && (
+          <div className="absolute inset-0 bg-slate-900/20 flex items-center justify-center">
+            <Lock className="w-8 h-8 text-white/80" />
+          </div>
+        )}
+      </div>
+
+      {/* 项目信息 */}
+      <CardContent className="p-3">
+        <h3 className="font-medium truncate">{project.name}</h3>
+        <p className="text-xs text-slate-500 mt-1">
+          {isGracePeriod
+            ? `将于 ${formatDate(gracePeriodEnd)} 锁定`
+            : '升级后可恢复编辑'}
+        </p>
+      </CardContent>
+
+      {/* 操作按钮 */}
+      <CardFooter className="p-3 pt-0 flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="flex-1"
+          onClick={() => window.open(`/create/${project.id}?readonly=true`)}
+        >
+          <Eye className="w-4 h-4 mr-1" />
+          查看
+        </Button>
+        <Button
+          size="sm"
+          className="flex-1"
+          onClick={onUpgrade}
+        >
+          <Unlock className="w-4 h-4 mr-1" />
+          解锁
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+```
+
+**锁定项目卡片视觉示例**:
+
+```
+正常项目卡片:                          锁定项目卡片 (降级):
+┌─────────────────────┐              ┌─────────────────────┐
+│ ┌─────────────────┐ │              │ ┌─────────────────┐ │ [🔒 只读]
+│ │                 │ │              │ │    🔒            │ │
+│ │    缩略图       │ │              │ │   (半透明遮罩)   │ │
+│ │                 │ │              │ │                 │ │
+│ └─────────────────┘ │              │ └─────────────────┘ │
+│ 项目名称            │              │ 项目名称            │
+│ 上次编辑: 2小时前    │              │ 升级后可恢复编辑     │
+│                     │              │ [查看] [解锁]        │
+└─────────────────────┘              └─────────────────────┘
+
+宽限期项目卡片:
+┌─────────────────────┐
+│ ┌─────────────────┐ │ [⚠️ 即将锁定]
+│ │                 │ │
+│ │    缩略图       │ │
+│ │   (无遮罩)      │ │
+│ └─────────────────┘ │
+│ 项目名称            │
+│ 将于 2月11日 锁定    │
+│ [编辑] [续订保留]    │
+└─────────────────────┘
+```
+
+### 13.2 GracePeriodBanner 组件
+
+**宽限期内 Dashboard 顶部显示**:
+
+```tsx
+// components/dashboard/GracePeriodBanner.tsx
+
+interface GracePeriodBannerProps {
+  daysRemaining: number;
+  exceededResources: {
+    workspaces: number;
+    projects: number;
+    folders: number;
+  };
+  onUpgrade: () => void;
+}
+
+export function GracePeriodBanner({
+  daysRemaining,
+  exceededResources,
+  onUpgrade
+}: GracePeriodBannerProps) {
+  const totalExceeded =
+    exceededResources.workspaces +
+    exceededResources.projects +
+    exceededResources.folders;
+
+  return (
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
+      <div className="flex items-start justify-between">
+        <div className="flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 mt-0.5" />
+          <div>
+            <p className="font-medium text-amber-800">
+              订阅已降级 · 宽限期还剩 {daysRemaining} 天
+            </p>
+            <p className="text-sm text-amber-600 mt-1">
+              {totalExceeded} 个资源将在宽限期结束后变为只读：
+              {exceededResources.projects > 0 && ` ${exceededResources.projects} 个项目`}
+              {exceededResources.folders > 0 && ` ${exceededResources.folders} 个文件夹`}
+              {exceededResources.workspaces > 0 && ` ${exceededResources.workspaces} 个 Workspace`}
+            </p>
+          </div>
+        </div>
+        <Button onClick={onUpgrade}>
+          续订保留
+        </Button>
+      </div>
+    </div>
+  );
+}
+```
+
+**宽限期 Banner 视觉示例**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ ⚠️ 订阅已降级 · 宽限期还剩 5 天                                [续订保留]   │
+│    8 个资源将在宽限期结束后变为只读：5 个项目 3 个文件夹                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 13.3 资源操作限制
+
+| 资源状态 | 查看 | 编辑 | 删除 | 导出 |
+|---------|:----:|:----:|:----:|:----:|
+| 正常 | ✅ | ✅ | ✅ | ✅ |
+| 宽限期内 | ✅ | ✅ | ✅ | ✅ |
+| 已锁定 (降级) | ✅ | ❌ | ✅ | PDF ✅ / ZIP ❌ |
+| 已锁定 (试用期过期) | ✅ | ❌ | ✅ | PDF ✅ / ZIP ❌ |
+
+---
+
+## 十四、修订历史
 
 | 版本 | 日期 | 变更内容 |
 |------|------|----------|
@@ -607,6 +1139,7 @@ T3 用户的 Projects 为 unlimited，显示方式：
 | v1.1 | 2026-02-03 | 补充遗漏：useQuotaGuard 实现、QuotaBar 组件、ProjectLimitWarning、配额映射表 |
 | v1.2 | 2026-02-04 | 基于 CSV 表格校准：Editor 页面功能控制方式、第 7-9 行说明 |
 | v1.3 | 2026-02-04 | 全面审计修复：PDF 打印/下载注释错误修正；t2 maxCustomAssets 改为 50/Account |
+| v1.4 | 2026-02-04 | **边界场景 UI 规范**：(1) 试用期状态提醒 (TrialStatusBanner + TrialExpiredModal)；(2) 编辑器只读模式 (EditorReadOnlyOverlay + 操作限制表)；(3) Tier 降级资源锁定 (LockedProjectCard + GracePeriodBanner) |
 
 ---
 
