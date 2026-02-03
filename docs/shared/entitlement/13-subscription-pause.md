@@ -221,4 +221,278 @@ Response: {
 
 ---
 
+## 八、完整服务实现
+
+### 8.1 SubscriptionPauseService
+
+```python
+# domains/subscription/services/pause_service.py
+
+from datetime import datetime, timedelta
+from typing import Dict, Optional
+
+class SubscriptionPauseService:
+    """订阅暂停服务"""
+
+    async def pause_subscription(
+        self,
+        user_id: str,
+        duration_months: int,
+        reason: str = None
+    ) -> Dict:
+        """暂停订阅"""
+
+        # 1. 检查是否允许暂停
+        validation = await self._validate_pause_eligibility(user_id, duration_months)
+        if not validation['eligible']:
+            raise PauseNotAllowedError(validation['reason'])
+
+        # 2. 获取当前订阅
+        subscription = await self._get_active_subscription(user_id)
+
+        # 3. 计算暂停时间
+        pause_start = self._calculate_pause_start(subscription)
+        pause_end = pause_start + timedelta(days=duration_months * 30)
+
+        # 4. 通知 Stripe 暂停 (使用 subscription_schedule)
+        await self._pause_stripe_subscription(subscription.stripe_subscription_id, pause_end)
+
+        # 5. 更新数据库
+        await db.execute("""
+            UPDATE subscriptions SET
+                status = 'paused',
+                pause_start_at = $1,
+                pause_end_at = $2,
+                pause_reason = $3,
+                pause_count_this_year = pause_count_this_year + 1
+            WHERE user_id = $4
+        """, pause_start, pause_end, reason, user_id)
+
+        # 6. 记录暂停历史
+        await db.execute("""
+            INSERT INTO subscription_pause_history
+            (user_id, subscription_id, pause_start_at, planned_end_at, reason)
+            VALUES ($1, $2, $3, $4, $5)
+        """, user_id, subscription.id, pause_start, pause_end, reason)
+
+        # 7. 触发降级处理 (临时降为 t1)
+        await self.downgrade_service.process_downgrade(
+            user_id,
+            old_tier=subscription.tier,
+            new_tier='t1',
+            reason='subscription_paused'
+        )
+
+        # 8. 发送确认邮件
+        await self._send_pause_confirmation_email(user_id, pause_start, pause_end)
+
+        return {
+            'status': 'paused',
+            'pause_start': pause_start,
+            'pause_end': pause_end,
+            'auto_resume': True
+        }
+
+    async def resume_subscription(self, user_id: str) -> Dict:
+        """提前恢复订阅"""
+
+        subscription = await self._get_paused_subscription(user_id)
+        if not subscription:
+            raise SubscriptionNotPausedError()
+
+        # 1. 恢复 Stripe 订阅
+        await self._resume_stripe_subscription(subscription.stripe_subscription_id)
+
+        # 2. 更新数据库
+        await db.execute("""
+            UPDATE subscriptions SET
+                status = 'active',
+                pause_start_at = NULL,
+                pause_end_at = NULL
+            WHERE user_id = $1
+        """, user_id)
+
+        # 3. 标记历史记录
+        await db.execute("""
+            UPDATE subscription_pause_history SET
+                pause_end_at = NOW(),
+                resumed_early = TRUE
+            WHERE user_id = $1 AND pause_end_at IS NULL
+        """, user_id)
+
+        # 4. 恢复 Tier 权限
+        await self.upgrade_service.process_upgrade(user_id, subscription.tier)
+
+        # 5. 发送恢复确认邮件
+        await self._send_resume_confirmation_email(user_id)
+
+        return {'status': 'active', 'tier': subscription.tier}
+
+    async def _validate_pause_eligibility(self, user_id: str, duration_months: int) -> Dict:
+        """验证是否有资格暂停"""
+
+        subscription = await self._get_active_subscription(user_id)
+
+        # 检查是否年付
+        if subscription.billing_interval == 'year':
+            allow_annual = await get_config('pause.allow_annual')
+            if not allow_annual:
+                return {'eligible': False, 'reason': '年付订阅不支持暂停，如需取消请联系客服'}
+
+        # 检查暂停次数
+        max_per_year = await get_config('pause.max_per_year') or 2
+        if subscription.pause_count_this_year >= max_per_year:
+            return {'eligible': False, 'reason': f'今年已暂停 {max_per_year} 次，无法再次暂停'}
+
+        # 检查暂停间隔
+        last_pause = await db.fetch_one("""
+            SELECT pause_end_at FROM subscription_pause_history
+            WHERE user_id = $1 ORDER BY pause_end_at DESC LIMIT 1
+        """, user_id)
+
+        if last_pause:
+            min_interval = await get_config('pause.min_interval_months') or 3
+            min_resume_date = last_pause['pause_end_at'] + timedelta(days=min_interval * 30)
+            if datetime.now() < min_resume_date:
+                return {'eligible': False, 'reason': f'距离上次暂停未满 {min_interval} 个月'}
+
+        # 检查时长
+        min_duration = await get_config('pause.min_duration_months') or 1
+        max_duration = await get_config('pause.max_duration_months') or 3
+
+        if duration_months < min_duration or duration_months > max_duration:
+            return {'eligible': False, 'reason': f'暂停时长需在 {min_duration}-{max_duration} 个月之间'}
+
+        return {'eligible': True, 'reason': None}
+```
+
+---
+
+## 九、配置项
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('pause.min_duration_months', '1', 'integer', 'subscription', '最短暂停月数'),
+('pause.max_duration_months', '3', 'integer', 'subscription', '最长暂停月数'),
+('pause.max_per_year', '2', 'integer', 'subscription', '每年最大暂停次数'),
+('pause.min_interval_months', '3', 'integer', 'subscription', '两次暂停最小间隔'),
+('pause.allow_annual', 'false', 'boolean', 'subscription', '年付是否允许暂停');
+```
+
+---
+
+## 十、UI 组件
+
+### 10.1 PauseSubscriptionModal
+
+```typescript
+// 设置页 - 订阅管理
+// /settings/subscription
+
+interface PauseSubscriptionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentTier: string;
+  onPause: (months: number, reason?: string) => Promise<void>;
+}
+
+function PauseSubscriptionModal({ isOpen, onClose, currentTier, onPause }: PauseSubscriptionModalProps) {
+  const [months, setMonths] = useState(1);
+  const [reason, setReason] = useState('');
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose}>
+      <ModalHeader>暂停订阅</ModalHeader>
+      <ModalBody>
+        <Alert variant="warning">
+          暂停期间，您的账户将降为免费版，部分功能将受限。
+          暂停结束后将自动恢复订阅并扣费。
+        </Alert>
+
+        <div className="mt-4">
+          <Label>暂停时长</Label>
+          <Select value={months} onChange={(v) => setMonths(Number(v))}>
+            <Option value={1}>1 个月</Option>
+            <Option value={2}>2 个月</Option>
+            <Option value={3}>3 个月</Option>
+          </Select>
+        </div>
+
+        <div className="mt-4">
+          <Label>暂停原因 (可选)</Label>
+          <Textarea
+            placeholder="告诉我们为什么暂停，帮助我们改进产品"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        </div>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose}>取消</Button>
+        <Button variant="warning" onClick={() => onPause(months, reason)}>
+          确认暂停
+        </Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+```
+
+### 10.2 PausedStatusBanner
+
+```typescript
+// 暂停状态 Banner
+function PausedStatusBanner({ pauseEndsAt }: { pauseEndsAt: Date }) {
+  const daysRemaining = Math.ceil((pauseEndsAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+  return (
+    <Banner variant="info">
+      <span>
+        您的订阅已暂停，将于 {formatDate(pauseEndsAt)} 自动恢复
+        （还剩 {daysRemaining} 天）
+      </span>
+      <Button size="sm" onClick={() => openResumeModal()}>
+        立即恢复
+      </Button>
+    </Banner>
+  );
+}
+```
+
+---
+
+## 十一、扩展数据库设计
+
+### 11.1 subscriptions 表新增字段
+
+```sql
+-- subscriptions 表新增字段
+ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS
+    pause_start_at TIMESTAMPTZ,          -- 暂停开始时间
+    pause_end_at TIMESTAMPTZ,            -- 暂停结束时间 (预设)
+    pause_reason TEXT,                   -- 暂停原因 (用户反馈)
+    pause_count_this_year INT DEFAULT 0; -- 今年已暂停次数
+```
+
+### 11.2 暂停历史记录表 (完整版)
+
+```sql
+-- 暂停历史记录表
+CREATE TABLE IF NOT EXISTS subscription_pause_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    subscription_id TEXT NOT NULL,
+    pause_start_at TIMESTAMPTZ NOT NULL,
+    pause_end_at TIMESTAMPTZ,            -- 实际结束时间
+    planned_end_at TIMESTAMPTZ NOT NULL, -- 计划结束时间
+    reason TEXT,
+    resumed_early BOOLEAN DEFAULT FALSE, -- 是否提前恢复
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_pause_history_user ON subscription_pause_history(user_id);
+```
+
+---
+
 **END OF DOCUMENT**
