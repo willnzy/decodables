@@ -1,6 +1,6 @@
 # 功能权限矩阵
 
-> **版本**: v1.6
+> **版本**: v1.7
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **说明**: 本文档是功能权限的**唯一数据源**，后端配置和前端实现都以此为准
@@ -904,7 +904,179 @@ export function normalizeFeatureKey(key: string): string {
 
 ---
 
-## 七、变更记录
+## 七、后续扩展场景 (业界预判)
+
+> 基于业界最佳实践 (LaunchDarkly, Split.io, Unleash, Statsig) 预判未来可能需要的复杂场景，提前评估当前架构的支持能力。
+
+### 7.1 场景支持矩阵
+
+| 场景 | 支持情况 | 当前能力 | 扩展建议 |
+|------|:--------:|----------|---------|
+| **灰度发布 + Tier 组合** | ⚠️ 部分 | `feature-flag-engine.md` 有 `allowed_tiers` | 需明确 Flag 与 Entitlement 优先级冲突时的处理逻辑 |
+| **多租户 (Team/Org 级权限)** | ❌ 不支持 | 当前只有 User 级 | 将来可能需要 Workspace 级权限继承 |
+| **权限继承链** | ❌ 不支持 | "t3 自动包含 t2 所有权限" 目前是手动配置 | 可考虑引入继承机制减少配置冗余 |
+| **动态定价实验** | ⚠️ 部分 | 可用 AB 实验改变 Tier 显示价格 | 与支付系统 (Stripe) 需额外集成 |
+| **权限批量管理** | ❌ 不支持 | 只能逐个 `user_feature_overrides` | 可扩展支持用户组/标签批量授权 |
+| **审计 + 回溯** | ✅ 已支持 | `feature_flags` 有 audit_log，`user_feature_overrides` 有 logs 表 | 已在 v1.6 补充 |
+| **配置版本控制** | ❌ 不支持 | 无法回滚到历史配置版本 | 可考虑引入版本快照机制 |
+
+### 7.2 灰度发布 + Tier 组合
+
+**场景**: 新功能只对 t3 用户的 50% 灰度发布
+
+**当前方案** (feature-flag-engine.md):
+```typescript
+// Feature Flag 配置
+{
+  flag_key: "new_ai_model",
+  allowed_tiers: ["t3"],        // Tier 限制
+  rollout_percentage: 50,       // 灰度百分比
+  is_enabled: true
+}
+```
+
+**优先级冲突处理**:
+```
+场景: t3 用户有 Entitlement 权限，但 Feature Flag 灰度未命中
+
+解决方案: Feature Flag (技术开关) 优先于 Entitlement (商业权限)
+理由: 功能未完全上线时，即使用户有权限也不应访问
+
+优先级: Kill Switch > Feature Flag > User Override > Tier Config
+```
+
+**扩展建议**: 在 `entitlement-system-design.md` 的权限优先级中明确 Feature Flag 的位置
+
+### 7.3 多租户权限 (未来)
+
+**场景**: Workspace Owner 升级到 t3，成员自动获得部分 t3 权限
+
+**当前限制**: 权限绑定在 User 级，无 Workspace 继承
+
+**未来扩展方向**:
+```sql
+-- 可能的表结构扩展
+CREATE TABLE workspace_feature_overrides (
+  id UUID PRIMARY KEY,
+  workspace_id UUID NOT NULL,
+  feature_key TEXT NOT NULL,
+  override_value TEXT NOT NULL,
+  reason TEXT,
+  expires_at TIMESTAMPTZ,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(workspace_id, feature_key)
+);
+
+-- 权限继承优先级
+-- User Override > Workspace Override > User Tier Config
+```
+
+### 7.4 权限继承链 (未来)
+
+**场景**: t3 自动包含 t2 的所有权限，避免重复配置
+
+**当前方式**: 手动在每个 Tier 配置中列出所有权限
+
+**改进方向**:
+```typescript
+// 继承式配置
+const TIER_INHERITANCE = {
+  t1: [],           // 基础
+  t2: ['t1'],       // 继承 t1
+  t3: ['t2'],       // 继承 t2 (间接继承 t1)
+  t4: ['t3'],       // 继承 t3
+};
+
+// 评估时自动合并父级权限
+function getTierFeatures(tier: string): Record<string, boolean> {
+  const parents = TIER_INHERITANCE[tier] || [];
+  const inherited = parents.flatMap(p => getTierFeatures(p));
+  const own = TIER_FEATURES[tier];
+  return { ...Object.assign({}, ...inherited), ...own };
+}
+```
+
+**优先级**: 当前无需实现，可在 Tier 数量增加时考虑
+
+### 7.5 权限批量管理 (未来)
+
+**场景**: 为"KOL 用户组"批量授权 AI 功能
+
+**当前限制**: 只能逐个添加 `user_feature_overrides`
+
+**扩展方向**:
+```sql
+-- 用户组表
+CREATE TABLE user_groups (
+  id UUID PRIMARY KEY,
+  group_name TEXT NOT NULL UNIQUE,  -- 如 'kol', 'beta_testers', 'enterprise_pilot'
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 用户组成员
+CREATE TABLE user_group_members (
+  user_id TEXT NOT NULL REFERENCES profiles(user_id),
+  group_id UUID NOT NULL REFERENCES user_groups(id),
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, group_id)
+);
+
+-- 组级权限覆盖
+CREATE TABLE group_feature_overrides (
+  id UUID PRIMARY KEY,
+  group_id UUID NOT NULL REFERENCES user_groups(id),
+  feature_key TEXT NOT NULL,
+  override_value TEXT NOT NULL,
+  reason TEXT,
+  expires_at TIMESTAMPTZ,
+  created_by TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(group_id, feature_key)
+);
+```
+
+**评估优先级**: User Override > Group Override > Tier Config
+
+### 7.6 配置版本控制 (未来)
+
+**场景**: 错误配置后需要回滚到之前的版本
+
+**当前限制**: 只有审计日志，无法一键回滚
+
+**扩展方向**:
+```sql
+-- 配置快照表
+CREATE TABLE config_snapshots (
+  id UUID PRIMARY KEY,
+  snapshot_name TEXT NOT NULL,        -- 如 'pre_black_friday_2026'
+  snapshot_type TEXT NOT NULL,        -- 'tier_configs' | 'feature_flags' | 'full'
+  snapshot_data JSONB NOT NULL,       -- 完整配置快照
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  description TEXT
+);
+
+-- 回滚操作
+-- 1. 读取 snapshot_data
+-- 2. 覆盖 system_configs 对应记录
+-- 3. 记录审计日志
+```
+
+### 7.7 实施优先级建议
+
+| 优先级 | 场景 | 建议时机 |
+|:------:|------|---------|
+| P0 | 灰度 + Tier 优先级明确 | **当前迭代** (文档补充) |
+| P1 | 权限批量管理 | 用户量 > 10,000 时 |
+| P2 | 多租户权限 | Team 功能上线时 |
+| P3 | 权限继承链 | Tier 数量 > 5 时 |
+| P4 | 配置版本控制 | 运营频繁改配置时 |
+
+---
+
+## 八、变更记录
 
 | 日期 | 版本 | 变更内容 |
 |------|------|---------|
@@ -915,6 +1087,7 @@ export function normalizeFeatureKey(key: string): string {
 | 2026-02-04 | v1.4 | 补充 AB 实验场景：跨 Tier 用户验证功能的实验组/对照组配置示例 |
 | 2026-02-04 | v1.5 | 新增权限优先级规则详解：参考 LaunchDarkly/Split.io/Unleash 业界最佳实践，含流程图和设计原则 |
 | 2026-02-04 | v1.6 | 全面审计修复：补充 t4 兜底配置 (EMERGENCY_TIER_CONFIGS/TIER_FEATURES_FALLBACK/JSON 配置)；补充 compareTier() 函数定义；补充 user_feature_override_logs 审计日志表；统一 Feature Key 命名 (LEGACY_KEY_MAP 更新) |
+| 2026-02-04 | v1.7 | 新增"后续扩展场景 (业界预判)"：灰度+Tier 组合、多租户权限、权限继承链、动态定价实验、权限批量管理、配置版本控制，含实施优先级建议 |
 
 ---
 
