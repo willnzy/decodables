@@ -1,6 +1,6 @@
 # 功能权限矩阵
 
-> **版本**: v1.7
+> **版本**: v1.8
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **说明**: 本文档是功能权限的**唯一数据源**，后端配置和前端实现都以此为准
@@ -904,175 +904,1142 @@ export function normalizeFeatureKey(key: string): string {
 
 ---
 
-## 七、后续扩展场景 (业界预判)
+## 七、扩展场景完整实现方案
 
-> 基于业界最佳实践 (LaunchDarkly, Split.io, Unleash, Statsig) 预判未来可能需要的复杂场景，提前评估当前架构的支持能力。
+> 基于业界最佳实践 (LaunchDarkly, Split.io, Unleash, Statsig) 设计的扩展场景完整实现方案。
 
 ### 7.1 场景支持矩阵
 
-| 场景 | 支持情况 | 当前能力 | 扩展建议 |
-|------|:--------:|----------|---------|
-| **灰度发布 + Tier 组合** | ⚠️ 部分 | `feature-flag-engine.md` 有 `allowed_tiers` | 需明确 Flag 与 Entitlement 优先级冲突时的处理逻辑 |
-| **多租户 (Team/Org 级权限)** | ❌ 不支持 | 当前只有 User 级 | 将来可能需要 Workspace 级权限继承 |
-| **权限继承链** | ❌ 不支持 | "t3 自动包含 t2 所有权限" 目前是手动配置 | 可考虑引入继承机制减少配置冗余 |
-| **动态定价实验** | ⚠️ 部分 | 可用 AB 实验改变 Tier 显示价格 | 与支付系统 (Stripe) 需额外集成 |
-| **权限批量管理** | ❌ 不支持 | 只能逐个 `user_feature_overrides` | 可扩展支持用户组/标签批量授权 |
-| **审计 + 回溯** | ✅ 已支持 | `feature_flags` 有 audit_log，`user_feature_overrides` 有 logs 表 | 已在 v1.6 补充 |
-| **配置版本控制** | ❌ 不支持 | 无法回滚到历史配置版本 | 可考虑引入版本快照机制 |
+| 场景 | 支持情况 | 说明 |
+|------|:--------:|------|
+| **灰度发布 + Tier 组合** | ✅ 支持 | 完整优先级规则 + 评估引擎 |
+| **权限继承链** | ✅ 支持 | Tier 自动继承父级权限 |
+| **权限批量管理** | ✅ 支持 | 用户组 + 组级权限覆盖 |
+| **配置版本控制** | ✅ 支持 | 快照 + 回滚机制 |
+| **多租户 (Team/Org 级权限)** | ✅ 支持 | Workspace 级权限继承 |
+| **审计 + 回溯** | ✅ 已实现 | v1.6 已补充 logs 表 |
+
+---
 
 ### 7.2 灰度发布 + Tier 组合
 
-**场景**: 新功能只对 t3 用户的 50% 灰度发布
+#### 7.2.1 完整优先级规则
 
-**当前方案** (feature-flag-engine.md):
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    权限评估完整优先级 (从高到低)                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Level 1: 全局开关 (Kill Switch)                                            │
+│  ├── 配置: feature.{key}.enabled = false                                   │
+│  ├── 效果: 功能完全下线，任何其他配置无效                                      │
+│  └── 场景: 紧急下线、功能维护、严重 Bug                                       │
+│                                                                             │
+│  Level 2: Feature Flag (技术开关)                                           │
+│  ├── 配置: feature_flags 表                                                │
+│  ├── 效果: 控制功能是否对特定用户群可见                                        │
+│  ├── 场景: 灰度发布、AB 实验、Beta 测试                                       │
+│  └── ⚠️ 即使用户有 Entitlement 权限，Flag 关闭也无法访问                       │
+│                                                                             │
+│  Level 3: 用户级覆盖 (User Override)                                        │
+│  ├── 配置: user_feature_overrides 表                                        │
+│  ├── 效果: 为特定用户开通/关闭功能，跨 Tier 生效                               │
+│  └── 场景: VIP 用户、客服补偿、Bug 隔离                                       │
+│                                                                             │
+│  Level 4: 用户组覆盖 (Group Override)                                       │
+│  ├── 配置: group_feature_overrides 表                                       │
+│  ├── 效果: 为用户组批量授权                                                   │
+│  └── 场景: KOL 用户组、Beta 测试组、Enterprise 试用组                          │
+│                                                                             │
+│  Level 5: Workspace 覆盖 (Workspace Override)                               │
+│  ├── 配置: workspace_feature_overrides 表                                   │
+│  ├── 效果: Workspace 成员继承权限                                            │
+│  └── 场景: Team Plan、企业授权                                               │
+│                                                                             │
+│  Level 6: Tier 配置 (Plan-based) + 继承链                                   │
+│  ├── 配置: tier.{tier}.features + TIER_INHERITANCE                         │
+│  ├── 效果: 按用户订阅等级决定权限，自动继承父级                                 │
+│  └── 场景: 常规付费功能控制                                                   │
+│                                                                             │
+│  Level 7: 默认值 (Fallback)                                                 │
+│  ├── 配置: EMERGENCY_TIER_CONFIGS 常量                                      │
+│  └── 场景: 数据库不可用时的兜底                                               │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+#### 7.2.2 完整评估引擎
+
 ```typescript
-// Feature Flag 配置
-{
-  flag_key: "new_ai_model",
-  allowed_tiers: ["t3"],        // Tier 限制
-  rollout_percentage: 50,       // 灰度百分比
-  is_enabled: true
+// lib/entitlement/evaluator.ts
+
+interface EvaluationContext {
+  userId: string;
+  tier: string;
+  isWithinTrialPeriod: boolean;
+  userGroups: string[];      // 用户所属组
+  workspaceId?: string;      // 当前 Workspace
+}
+
+interface EvaluationResult {
+  allowed: boolean;
+  reason: string;
+  source: 'kill_switch' | 'feature_flag' | 'user_override' | 'group_override' | 'workspace_override' | 'tier_config' | 'fallback';
+  trialDaysRemaining?: number;
+}
+
+async function evaluateFeatureAccess(
+  featureKey: string,
+  context: EvaluationContext
+): Promise<EvaluationResult> {
+
+  // Level 1: Kill Switch
+  const killSwitch = await getConfig(`feature.${featureKey}.enabled`);
+  if (killSwitch === 'false') {
+    return {
+      allowed: false,
+      reason: 'Feature is globally disabled',
+      source: 'kill_switch'
+    };
+  }
+
+  // Level 2: Feature Flag
+  const flagResult = await evaluateFeatureFlag(featureKey, context);
+  if (flagResult !== null) {
+    return {
+      allowed: flagResult.enabled,
+      reason: flagResult.enabled ? 'Feature flag enabled' : 'Feature flag disabled or not in rollout',
+      source: 'feature_flag'
+    };
+  }
+
+  // Level 3: User Override
+  const userOverride = await getUserOverride(context.userId, featureKey);
+  if (userOverride) {
+    return {
+      allowed: userOverride.override_value === 'true',
+      reason: `User override: ${userOverride.reason}`,
+      source: 'user_override'
+    };
+  }
+
+  // Level 4: Group Override
+  if (context.userGroups.length > 0) {
+    const groupOverride = await getGroupOverride(context.userGroups, featureKey);
+    if (groupOverride) {
+      return {
+        allowed: groupOverride.override_value === 'true',
+        reason: `Group override: ${groupOverride.reason}`,
+        source: 'group_override'
+      };
+    }
+  }
+
+  // Level 5: Workspace Override
+  if (context.workspaceId) {
+    const workspaceOverride = await getWorkspaceOverride(context.workspaceId, featureKey);
+    if (workspaceOverride) {
+      return {
+        allowed: workspaceOverride.override_value === 'true',
+        reason: `Workspace override: ${workspaceOverride.reason}`,
+        source: 'workspace_override'
+      };
+    }
+  }
+
+  // Level 6: Tier Config (with inheritance)
+  const tierFeatures = getTierFeaturesWithInheritance(context.tier);
+  const featureValue = tierFeatures[featureKey];
+
+  if (featureValue === true) {
+    return { allowed: true, reason: 'Tier permission', source: 'tier_config' };
+  }
+
+  if (featureValue === 'trial') {
+    if (context.isWithinTrialPeriod) {
+      const daysRemaining = await getTrialDaysRemaining(context.userId);
+      return {
+        allowed: true,
+        reason: 'Trial period active',
+        source: 'tier_config',
+        trialDaysRemaining: daysRemaining
+      };
+    }
+    return { allowed: false, reason: 'Trial period expired', source: 'tier_config' };
+  }
+
+  if (featureValue === false) {
+    return { allowed: false, reason: 'Not included in tier', source: 'tier_config' };
+  }
+
+  // Level 7: Fallback
+  const fallback = EMERGENCY_TIER_CONFIGS[context.tier]?.features[featureKey] ?? false;
+  return {
+    allowed: fallback === true,
+    reason: 'Fallback default',
+    source: 'fallback'
+  };
+}
+
+// Feature Flag 评估 (灰度 + Tier 组合)
+async function evaluateFeatureFlag(
+  featureKey: string,
+  context: EvaluationContext
+): Promise<{ enabled: boolean } | null> {
+  const flag = await db.fetch(`
+    SELECT * FROM feature_flags
+    WHERE flag_key = $1 AND is_enabled = true
+  `, featureKey);
+
+  if (!flag) return null;  // 无 Flag，继续下一级
+
+  // 检查 Tier 限制
+  if (flag.allowed_tiers && flag.allowed_tiers.length > 0) {
+    if (!flag.allowed_tiers.includes(context.tier)) {
+      return { enabled: false };  // Tier 不在允许列表
+    }
+  }
+
+  // 检查灰度百分比
+  if (flag.rollout_percentage < 100) {
+    const hash = hashUserForRollout(context.userId, featureKey);
+    if (hash > flag.rollout_percentage) {
+      return { enabled: false };  // 未命中灰度
+    }
+  }
+
+  return { enabled: true };
 }
 ```
 
-**优先级冲突处理**:
-```
-场景: t3 用户有 Entitlement 权限，但 Feature Flag 灰度未命中
+#### 7.2.3 灰度 + Tier 组合示例
 
-解决方案: Feature Flag (技术开关) 优先于 Entitlement (商业权限)
-理由: 功能未完全上线时，即使用户有权限也不应访问
-
-优先级: Kill Switch > Feature Flag > User Override > Tier Config
-```
-
-**扩展建议**: 在 `entitlement-system-design.md` 的权限优先级中明确 Feature Flag 的位置
-
-### 7.3 多租户权限 (未来)
-
-**场景**: Workspace Owner 升级到 t3，成员自动获得部分 t3 权限
-
-**当前限制**: 权限绑定在 User 级，无 Workspace 继承
-
-**未来扩展方向**:
-```sql
--- 可能的表结构扩展
-CREATE TABLE workspace_feature_overrides (
-  id UUID PRIMARY KEY,
-  workspace_id UUID NOT NULL,
-  feature_key TEXT NOT NULL,
-  override_value TEXT NOT NULL,
-  reason TEXT,
-  expires_at TIMESTAMPTZ,
-  created_by TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(workspace_id, feature_key)
-);
-
--- 权限继承优先级
--- User Override > Workspace Override > User Tier Config
-```
-
-### 7.4 权限继承链 (未来)
-
-**场景**: t3 自动包含 t2 的所有权限，避免重复配置
-
-**当前方式**: 手动在每个 Tier 配置中列出所有权限
-
-**改进方向**:
 ```typescript
-// 继承式配置
-const TIER_INHERITANCE = {
-  t1: [],           // 基础
-  t2: ['t1'],       // 继承 t1
-  t3: ['t2'],       // 继承 t2 (间接继承 t1)
-  t4: ['t3'],       // 继承 t3
+// 场景: 新 AI 模型只对 t3 用户的 30% 灰度发布
+
+// 1. 创建 Feature Flag
+await db.insert('feature_flags', {
+  flag_key: 'new_ai_model_v2',
+  flag_name: '新 AI 模型 v2',
+  is_enabled: true,
+  allowed_tiers: ['t3'],           // 只对 t3 用户
+  rollout_percentage: 30,          // 30% 灰度
+  description: '新 AI 模型灰度测试'
+});
+
+// 2. 评估结果
+// t1 用户 → allowed: false (Tier 不在 allowed_tiers)
+// t2 用户 → allowed: false (Tier 不在 allowed_tiers)
+// t3 用户 (命中 30%) → allowed: true
+// t3 用户 (未命中) → allowed: false (未命中灰度)
+
+// 3. 灰度结束后，删除 Flag，回归 Tier 配置
+await db.delete('feature_flags', { flag_key: 'new_ai_model_v2' });
+```
+
+---
+
+### 7.3 权限继承链
+
+#### 7.3.1 继承规则定义
+
+```typescript
+// lib/entitlement/inheritance.ts
+
+/**
+ * Tier 继承链定义
+ * - t1: 基础层级，无继承
+ * - t2: 继承 t1 所有权限
+ * - t3: 继承 t2 所有权限 (间接继承 t1)
+ * - t4: 继承 t3 所有权限 (间接继承 t1, t2)
+ */
+export const TIER_INHERITANCE: Record<string, string[]> = {
+  t1: [],
+  t2: ['t1'],
+  t3: ['t2'],
+  t4: ['t3'],
 };
 
-// 评估时自动合并父级权限
-function getTierFeatures(tier: string): Record<string, boolean> {
+/**
+ * Tier 增量配置
+ * 只配置该层级新增/修改的权限，其余从父级继承
+ */
+export const TIER_FEATURES_DELTA: Record<string, Record<string, boolean | string>> = {
+  t1: {
+    // 基础权限
+    platform_assets: true,
+    vector_tools: true,
+    freehand_tools: true,
+    pdf_export: true,
+    pdf_print: true,
+    can_subscribe: true,
+    // 试用权限
+    clipboard_paste: 'trial',
+    ai_features: 'trial',
+    smart_scan: 'trial',
+    zip_export: 'trial',
+    publish_paid: 'trial',
+    publish_free: 'trial',
+    browse_marketplace: 'trial',
+    purchase_marketplace: 'trial',
+    can_upload_custom_assets: 'trial',
+    // 禁用权限
+    recover_deleted: false,
+    can_invite_members: false,
+    can_purchase_credits: false,
+  },
+  t2: {
+    // t2 新增/覆盖的权限 (继承 t1 的基础)
+    ai_features: true,              // 覆盖 t1 的 trial
+    publish_free: true,             // 覆盖 t1 的 trial
+    browse_marketplace: true,       // 覆盖 t1 的 trial
+    purchase_marketplace: true,     // 覆盖 t1 的 trial
+    can_purchase_credits: true,     // 覆盖 t1 的 false
+    // 其余从 t1 继承
+  },
+  t3: {
+    // t3 新增/覆盖的权限 (继承 t2 的基础)
+    clipboard_paste: true,          // 覆盖 t1 的 trial
+    smart_scan: true,               // 覆盖 t1 的 trial
+    zip_export: true,               // 覆盖 t1 的 trial
+    publish_paid: true,             // 覆盖 t1 的 trial
+    recover_deleted: true,          // 覆盖 t1 的 false
+    can_invite_members: true,       // 覆盖 t1 的 false
+    can_upload_custom_assets: true, // 覆盖 t1 的 trial
+    // 其余从 t2 继承
+  },
+  t4: {
+    // t4 完全继承 t3，可添加额外企业功能
+    // 其余从 t3 继承
+  },
+};
+
+/**
+ * 获取 Tier 的完整权限配置 (含继承)
+ */
+export function getTierFeaturesWithInheritance(tier: string): Record<string, boolean | string> {
+  const result: Record<string, boolean | string> = {};
+
+  // 递归获取父级权限
   const parents = TIER_INHERITANCE[tier] || [];
-  const inherited = parents.flatMap(p => getTierFeatures(p));
-  const own = TIER_FEATURES[tier];
-  return { ...Object.assign({}, ...inherited), ...own };
+  for (const parent of parents) {
+    Object.assign(result, getTierFeaturesWithInheritance(parent));
+  }
+
+  // 覆盖当前层级的权限
+  Object.assign(result, TIER_FEATURES_DELTA[tier] || {});
+
+  return result;
+}
+
+/**
+ * 获取完整的 TIER_FEATURES (展开所有继承)
+ * 用于生成 TIER_FEATURES_FALLBACK 和 system_configs
+ */
+export function generateFullTierFeatures(): Record<string, Record<string, boolean | string>> {
+  return {
+    t1: getTierFeaturesWithInheritance('t1'),
+    t2: getTierFeaturesWithInheritance('t2'),
+    t3: getTierFeaturesWithInheritance('t3'),
+    t4: getTierFeaturesWithInheritance('t4'),
+  };
 }
 ```
 
-**优先级**: 当前无需实现，可在 Tier 数量增加时考虑
+#### 7.3.2 继承链验证工具
 
-### 7.5 权限批量管理 (未来)
+```typescript
+// scripts/tools/verify-tier-inheritance.ts
 
-**场景**: 为"KOL 用户组"批量授权 AI 功能
+import { generateFullTierFeatures, TIER_FEATURES_DELTA } from '@/lib/entitlement/inheritance';
 
-**当前限制**: 只能逐个添加 `user_feature_overrides`
+/**
+ * 验证继承链的正确性
+ */
+function verifyTierInheritance() {
+  const fullFeatures = generateFullTierFeatures();
 
-**扩展方向**:
+  console.log('=== Tier 继承验证 ===\n');
+
+  // 验证规则: 高层级必须包含低层级的所有 true 权限
+  const tiers = ['t1', 't2', 't3', 't4'];
+
+  for (let i = 1; i < tiers.length; i++) {
+    const currentTier = tiers[i];
+    const parentTier = tiers[i - 1];
+
+    const current = fullFeatures[currentTier];
+    const parent = fullFeatures[parentTier];
+
+    console.log(`${currentTier} vs ${parentTier}:`);
+
+    for (const [key, value] of Object.entries(parent)) {
+      if (value === true && current[key] !== true) {
+        console.error(`  ❌ ${key}: ${parentTier}=${value}, ${currentTier}=${current[key]}`);
+      }
+    }
+
+    // 显示增量
+    const delta = TIER_FEATURES_DELTA[currentTier];
+    console.log(`  增量配置: ${Object.keys(delta).length} 项`);
+    for (const [key, value] of Object.entries(delta)) {
+      console.log(`    ${key}: ${parent[key]} → ${value}`);
+    }
+    console.log('');
+  }
+}
+
+verifyTierInheritance();
+```
+
+---
+
+### 7.4 权限批量管理 (用户组)
+
+#### 7.4.1 数据库表设计
+
 ```sql
+-- =============================================
+-- 用户组系统表
+-- =============================================
+
 -- 用户组表
 CREATE TABLE user_groups (
-  id UUID PRIMARY KEY,
-  group_name TEXT NOT NULL UNIQUE,  -- 如 'kol', 'beta_testers', 'enterprise_pilot'
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_key TEXT NOT NULL UNIQUE,          -- 唯一标识: 'kol', 'beta_testers', 'enterprise_pilot'
+  group_name TEXT NOT NULL,                -- 显示名称: 'KOL 用户组', 'Beta 测试组'
   description TEXT,
+  is_active BOOLEAN DEFAULT true,
+  created_by TEXT NOT NULL,                -- 创建人 (Admin user_id)
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 用户组成员表
+CREATE TABLE user_group_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+  added_by TEXT NOT NULL,                  -- 添加人 (Admin user_id)
+  added_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,                  -- 成员过期时间 (可选)
+  UNIQUE(group_id, user_id)
+);
+
+-- 组级权限覆盖表
+CREATE TABLE group_feature_overrides (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+  feature_key TEXT NOT NULL,
+  override_value TEXT NOT NULL,            -- 'true' | 'false' | 'trial'
+  reason TEXT,
+  expires_at TIMESTAMPTZ,                  -- 权限过期时间 (可选)
+  created_by TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(group_id, feature_key)
+);
+
+-- 组级权限变更审计日志
+CREATE TABLE group_feature_override_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  override_id UUID REFERENCES group_feature_overrides(id) ON DELETE SET NULL,
+  group_id UUID NOT NULL,
+  feature_key TEXT NOT NULL,
+  action TEXT NOT NULL,                    -- 'created' | 'updated' | 'deleted' | 'expired'
+  old_value TEXT,
+  new_value TEXT,
+  reason TEXT,
+  changed_by TEXT NOT NULL,
+  changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX idx_user_groups_key ON user_groups(group_key);
+CREATE INDEX idx_user_group_members_user ON user_group_members(user_id);
+CREATE INDEX idx_user_group_members_group ON user_group_members(group_id);
+CREATE INDEX idx_user_group_members_expires ON user_group_members(expires_at) WHERE expires_at IS NOT NULL;
+CREATE INDEX idx_group_feature_overrides_group ON group_feature_overrides(group_id);
+CREATE INDEX idx_group_feature_overrides_expires ON group_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
+```
+
+#### 7.4.2 后端 Service 实现
+
+```python
+# domains/entitlement/services/group_service.py
+
+from typing import Optional, List
+from datetime import datetime
+from core.database import get_db
+
+class GroupService:
+    """用户组权限服务"""
+
+    async def create_group(
+        self,
+        group_key: str,
+        group_name: str,
+        description: str,
+        created_by: str
+    ) -> dict:
+        """创建用户组"""
+        db = await get_db()
+        result = await db.fetch_one("""
+            INSERT INTO user_groups (group_key, group_name, description, created_by)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+        """, group_key, group_name, description, created_by)
+        return dict(result)
+
+    async def add_members(
+        self,
+        group_id: str,
+        user_ids: List[str],
+        added_by: str,
+        expires_at: Optional[datetime] = None
+    ) -> int:
+        """批量添加成员"""
+        db = await get_db()
+        count = 0
+        for user_id in user_ids:
+            try:
+                await db.execute("""
+                    INSERT INTO user_group_members (group_id, user_id, added_by, expires_at)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (group_id, user_id) DO NOTHING
+                """, group_id, user_id, added_by, expires_at)
+                count += 1
+            except Exception:
+                pass
+        return count
+
+    async def set_group_feature(
+        self,
+        group_id: str,
+        feature_key: str,
+        override_value: str,
+        reason: str,
+        created_by: str,
+        expires_at: Optional[datetime] = None
+    ) -> dict:
+        """设置组级权限"""
+        db = await get_db()
+
+        # 获取旧值
+        old = await db.fetch_one("""
+            SELECT override_value FROM group_feature_overrides
+            WHERE group_id = $1 AND feature_key = $2
+        """, group_id, feature_key)
+
+        # Upsert
+        result = await db.fetch_one("""
+            INSERT INTO group_feature_overrides
+            (group_id, feature_key, override_value, reason, expires_at, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (group_id, feature_key) DO UPDATE SET
+                override_value = EXCLUDED.override_value,
+                reason = EXCLUDED.reason,
+                expires_at = EXCLUDED.expires_at,
+                updated_at = NOW()
+            RETURNING *
+        """, group_id, feature_key, override_value, reason, expires_at, created_by)
+
+        # 记录审计日志
+        await db.execute("""
+            INSERT INTO group_feature_override_logs
+            (override_id, group_id, feature_key, action, old_value, new_value, reason, changed_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """, result['id'], group_id, feature_key,
+            'updated' if old else 'created',
+            old['override_value'] if old else None,
+            override_value, reason, created_by)
+
+        return dict(result)
+
+    async def get_user_groups(self, user_id: str) -> List[str]:
+        """获取用户所属的所有有效组 ID"""
+        db = await get_db()
+        rows = await db.fetch_all("""
+            SELECT g.id FROM user_groups g
+            JOIN user_group_members m ON g.id = m.group_id
+            WHERE m.user_id = $1
+              AND g.is_active = true
+              AND (m.expires_at IS NULL OR m.expires_at > NOW())
+        """, user_id)
+        return [row['id'] for row in rows]
+
+    async def get_group_override(
+        self,
+        group_ids: List[str],
+        feature_key: str
+    ) -> Optional[dict]:
+        """获取组级权限覆盖 (优先返回第一个匹配的)"""
+        if not group_ids:
+            return None
+
+        db = await get_db()
+        result = await db.fetch_one("""
+            SELECT * FROM group_feature_overrides
+            WHERE group_id = ANY($1) AND feature_key = $2
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY created_at DESC
+            LIMIT 1
+        """, group_ids, feature_key)
+
+        return dict(result) if result else None
+```
+
+#### 7.4.3 使用示例
+
+```python
+# 场景: 为 KOL 用户组批量授权 AI 功能
+
+# 1. 创建 KOL 用户组
+kol_group = await group_service.create_group(
+    group_key='kol',
+    group_name='KOL 用户组',
+    description='签约 KOL 用户，享受 Pro 级别 AI 功能',
+    created_by='admin_user_id'
+)
+
+# 2. 批量添加 KOL 用户
+kol_user_ids = ['user_kol_001', 'user_kol_002', 'user_kol_003']
+await group_service.add_members(
+    group_id=kol_group['id'],
+    user_ids=kol_user_ids,
+    added_by='admin_user_id',
+    expires_at=datetime(2026, 12, 31)  # 年底到期
+)
+
+# 3. 设置组级 AI 功能权限
+await group_service.set_group_feature(
+    group_id=kol_group['id'],
+    feature_key='ai_features',
+    override_value='true',
+    reason='KOL 签约权益',
+    created_by='admin_user_id'
+)
+
+await group_service.set_group_feature(
+    group_id=kol_group['id'],
+    feature_key='smart_scan',
+    override_value='true',
+    reason='KOL 签约权益',
+    created_by='admin_user_id'
+)
+
+# 4. 评估时自动生效
+# t1 KOL 用户访问 ai_features → allowed: true (Group Override)
+# t1 普通用户访问 ai_features → allowed: false (Tier Config)
+```
+
+---
+
+### 7.5 配置版本控制
+
+#### 7.5.1 数据库表设计
+
+```sql
+-- =============================================
+-- 配置版本控制系统表
+-- =============================================
+
+-- 配置快照表
+CREATE TABLE config_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  snapshot_key TEXT NOT NULL UNIQUE,       -- 唯一标识: 'pre_black_friday_2026'
+  snapshot_name TEXT NOT NULL,             -- 显示名称: '黑五活动前快照'
+  snapshot_type TEXT NOT NULL,             -- 类型: 'tier_configs' | 'feature_flags' | 'full'
+  snapshot_data JSONB NOT NULL,            -- 完整配置数据
+  description TEXT,
+  is_current BOOLEAN DEFAULT false,        -- 是否为当前生效版本
+  created_by TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 用户组成员
-CREATE TABLE user_group_members (
-  user_id TEXT NOT NULL REFERENCES profiles(user_id),
-  group_id UUID NOT NULL REFERENCES user_groups(id),
-  added_at TIMESTAMPTZ DEFAULT NOW(),
-  PRIMARY KEY (user_id, group_id)
+-- 配置回滚日志
+CREATE TABLE config_rollback_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  snapshot_id UUID NOT NULL REFERENCES config_snapshots(id),
+  rollback_type TEXT NOT NULL,             -- 'full' | 'partial'
+  affected_keys TEXT[],                    -- 受影响的配置 key
+  rollback_reason TEXT NOT NULL,
+  rollback_by TEXT NOT NULL,
+  rollback_at TIMESTAMPTZ DEFAULT NOW(),
+  success BOOLEAN DEFAULT true,
+  error_message TEXT
 );
 
--- 组级权限覆盖
-CREATE TABLE group_feature_overrides (
-  id UUID PRIMARY KEY,
-  group_id UUID NOT NULL REFERENCES user_groups(id),
-  feature_key TEXT NOT NULL,
-  override_value TEXT NOT NULL,
-  reason TEXT,
-  expires_at TIMESTAMPTZ,
-  created_by TEXT,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(group_id, feature_key)
-);
+-- 索引
+CREATE INDEX idx_config_snapshots_type ON config_snapshots(snapshot_type);
+CREATE INDEX idx_config_snapshots_created ON config_snapshots(created_at DESC);
+CREATE INDEX idx_config_snapshots_current ON config_snapshots(is_current) WHERE is_current = true;
 ```
 
-**评估优先级**: User Override > Group Override > Tier Config
+#### 7.5.2 快照服务实现
 
-### 7.6 配置版本控制 (未来)
+```python
+# domains/entitlement/services/snapshot_service.py
 
-**场景**: 错误配置后需要回滚到之前的版本
+from typing import Optional, List
+from datetime import datetime
+import json
+from core.database import get_db
 
-**当前限制**: 只有审计日志，无法一键回滚
+class ConfigSnapshotService:
+    """配置快照与回滚服务"""
 
-**扩展方向**:
+    async def create_snapshot(
+        self,
+        snapshot_key: str,
+        snapshot_name: str,
+        snapshot_type: str,  # 'tier_configs' | 'feature_flags' | 'full'
+        description: str,
+        created_by: str
+    ) -> dict:
+        """创建配置快照"""
+        db = await get_db()
+
+        # 根据类型收集配置数据
+        snapshot_data = {}
+
+        if snapshot_type in ['tier_configs', 'full']:
+            tier_configs = await db.fetch_all("""
+                SELECT key, value, value_type FROM system_configs
+                WHERE config_group = 'tier' AND is_active = true
+            """)
+            snapshot_data['tier_configs'] = [dict(r) for r in tier_configs]
+
+        if snapshot_type in ['feature_flags', 'full']:
+            feature_flags = await db.fetch_all("""
+                SELECT * FROM feature_flags WHERE is_enabled = true
+            """)
+            snapshot_data['feature_flags'] = [dict(r) for r in feature_flags]
+
+        if snapshot_type == 'full':
+            # 包含全局开关
+            global_configs = await db.fetch_all("""
+                SELECT key, value, value_type FROM system_configs
+                WHERE config_group = 'feature' AND is_active = true
+            """)
+            snapshot_data['global_configs'] = [dict(r) for r in global_configs]
+
+            # 包含用户组权限
+            group_overrides = await db.fetch_all("""
+                SELECT * FROM group_feature_overrides
+            """)
+            snapshot_data['group_overrides'] = [dict(r) for r in group_overrides]
+
+        # 保存快照
+        result = await db.fetch_one("""
+            INSERT INTO config_snapshots
+            (snapshot_key, snapshot_name, snapshot_type, snapshot_data, description, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        """, snapshot_key, snapshot_name, snapshot_type,
+            json.dumps(snapshot_data), description, created_by)
+
+        return dict(result)
+
+    async def rollback_to_snapshot(
+        self,
+        snapshot_id: str,
+        rollback_reason: str,
+        rollback_by: str,
+        partial_keys: Optional[List[str]] = None  # 部分回滚时指定 key
+    ) -> dict:
+        """回滚到指定快照"""
+        db = await get_db()
+
+        # 获取快照
+        snapshot = await db.fetch_one("""
+            SELECT * FROM config_snapshots WHERE id = $1
+        """, snapshot_id)
+
+        if not snapshot:
+            raise ValueError(f"Snapshot {snapshot_id} not found")
+
+        snapshot_data = json.loads(snapshot['snapshot_data'])
+        affected_keys = []
+
+        try:
+            # 回滚 Tier 配置
+            if 'tier_configs' in snapshot_data:
+                for config in snapshot_data['tier_configs']:
+                    if partial_keys and config['key'] not in partial_keys:
+                        continue
+
+                    await db.execute("""
+                        UPDATE system_configs
+                        SET value = $1, updated_at = NOW()
+                        WHERE key = $2
+                    """, config['value'], config['key'])
+                    affected_keys.append(config['key'])
+
+            # 回滚 Feature Flags
+            if 'feature_flags' in snapshot_data:
+                # 先禁用所有当前 flags
+                await db.execute("""
+                    UPDATE feature_flags SET is_enabled = false, updated_at = NOW()
+                """)
+
+                # 恢复快照中的 flags
+                for flag in snapshot_data['feature_flags']:
+                    if partial_keys and flag['flag_key'] not in partial_keys:
+                        continue
+
+                    await db.execute("""
+                        INSERT INTO feature_flags (flag_key, flag_name, is_enabled, rollout_percentage, allowed_tiers)
+                        VALUES ($1, $2, $3, $4, $5)
+                        ON CONFLICT (flag_key) DO UPDATE SET
+                            is_enabled = EXCLUDED.is_enabled,
+                            rollout_percentage = EXCLUDED.rollout_percentage,
+                            allowed_tiers = EXCLUDED.allowed_tiers,
+                            updated_at = NOW()
+                    """, flag['flag_key'], flag['flag_name'], flag['is_enabled'],
+                        flag['rollout_percentage'], flag['allowed_tiers'])
+                    affected_keys.append(f"flag:{flag['flag_key']}")
+
+            # 标记快照为当前生效
+            await db.execute("""
+                UPDATE config_snapshots SET is_current = false
+            """)
+            await db.execute("""
+                UPDATE config_snapshots SET is_current = true WHERE id = $1
+            """, snapshot_id)
+
+            # 记录回滚日志
+            log = await db.fetch_one("""
+                INSERT INTO config_rollback_logs
+                (snapshot_id, rollback_type, affected_keys, rollback_reason, rollback_by, success)
+                VALUES ($1, $2, $3, $4, $5, true)
+                RETURNING *
+            """, snapshot_id, 'partial' if partial_keys else 'full',
+                affected_keys, rollback_reason, rollback_by)
+
+            return {
+                'success': True,
+                'affected_keys': affected_keys,
+                'log_id': log['id']
+            }
+
+        except Exception as e:
+            # 记录失败日志
+            await db.execute("""
+                INSERT INTO config_rollback_logs
+                (snapshot_id, rollback_type, affected_keys, rollback_reason, rollback_by, success, error_message)
+                VALUES ($1, $2, $3, $4, $5, false, $6)
+            """, snapshot_id, 'partial' if partial_keys else 'full',
+                affected_keys, rollback_reason, rollback_by, str(e))
+            raise
+
+    async def list_snapshots(
+        self,
+        snapshot_type: Optional[str] = None,
+        limit: int = 20
+    ) -> List[dict]:
+        """列出快照"""
+        db = await get_db()
+
+        if snapshot_type:
+            rows = await db.fetch_all("""
+                SELECT id, snapshot_key, snapshot_name, snapshot_type,
+                       description, is_current, created_by, created_at
+                FROM config_snapshots
+                WHERE snapshot_type = $1
+                ORDER BY created_at DESC
+                LIMIT $2
+            """, snapshot_type, limit)
+        else:
+            rows = await db.fetch_all("""
+                SELECT id, snapshot_key, snapshot_name, snapshot_type,
+                       description, is_current, created_by, created_at
+                FROM config_snapshots
+                ORDER BY created_at DESC
+                LIMIT $1
+            """, limit)
+
+        return [dict(r) for r in rows]
+```
+
+#### 7.5.3 使用示例
+
+```python
+# 场景: 黑五活动前创建快照，活动后回滚
+
+# 1. 活动前创建完整快照
+snapshot = await snapshot_service.create_snapshot(
+    snapshot_key='pre_black_friday_2026',
+    snapshot_name='2026 黑五活动前快照',
+    snapshot_type='full',
+    description='黑五促销活动前的完整配置备份',
+    created_by='admin_user_id'
+)
+print(f"快照创建成功: {snapshot['id']}")
+
+# 2. 进行活动配置修改...
+# (修改 Tier 权限、Feature Flags 等)
+
+# 3. 活动结束后回滚
+result = await snapshot_service.rollback_to_snapshot(
+    snapshot_id=snapshot['id'],
+    rollback_reason='黑五活动结束，恢复正常配置',
+    rollback_by='admin_user_id'
+)
+print(f"回滚成功，影响 {len(result['affected_keys'])} 个配置项")
+
+# 4. 部分回滚 (只回滚特定配置)
+result = await snapshot_service.rollback_to_snapshot(
+    snapshot_id=snapshot['id'],
+    rollback_reason='只恢复 t2 Tier 配置',
+    rollback_by='admin_user_id',
+    partial_keys=['tier.t2.features']  # 只回滚这个 key
+)
+```
+
+---
+
+### 7.6 多租户权限 (Workspace 级)
+
+#### 7.6.1 数据库表设计
+
 ```sql
--- 配置快照表
-CREATE TABLE config_snapshots (
-  id UUID PRIMARY KEY,
-  snapshot_name TEXT NOT NULL,        -- 如 'pre_black_friday_2026'
-  snapshot_type TEXT NOT NULL,        -- 'tier_configs' | 'feature_flags' | 'full'
-  snapshot_data JSONB NOT NULL,       -- 完整配置快照
+-- =============================================
+-- Workspace 级权限系统表
+-- =============================================
+
+-- Workspace 权限覆盖表
+CREATE TABLE workspace_feature_overrides (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+  feature_key TEXT NOT NULL,
+  override_value TEXT NOT NULL,            -- 'true' | 'false' | 'trial'
+  reason TEXT,                             -- 如 'Enterprise 试用', 'Team Plan 权益'
+  expires_at TIMESTAMPTZ,
   created_by TEXT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  description TEXT
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(workspace_id, feature_key)
 );
 
--- 回滚操作
--- 1. 读取 snapshot_data
--- 2. 覆盖 system_configs 对应记录
--- 3. 记录审计日志
+-- Workspace 权限变更审计日志
+CREATE TABLE workspace_feature_override_logs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  override_id UUID REFERENCES workspace_feature_overrides(id) ON DELETE SET NULL,
+  workspace_id UUID NOT NULL,
+  feature_key TEXT NOT NULL,
+  action TEXT NOT NULL,                    -- 'created' | 'updated' | 'deleted' | 'expired'
+  old_value TEXT,
+  new_value TEXT,
+  reason TEXT,
+  changed_by TEXT NOT NULL,
+  changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引
+CREATE INDEX idx_workspace_feature_overrides_workspace ON workspace_feature_overrides(workspace_id);
+CREATE INDEX idx_workspace_feature_overrides_expires ON workspace_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
 ```
 
-### 7.7 实施优先级建议
+#### 7.6.2 Workspace 权限服务
 
-| 优先级 | 场景 | 建议时机 |
-|:------:|------|---------|
-| P0 | 灰度 + Tier 优先级明确 | **当前迭代** (文档补充) |
-| P1 | 权限批量管理 | 用户量 > 10,000 时 |
-| P2 | 多租户权限 | Team 功能上线时 |
-| P3 | 权限继承链 | Tier 数量 > 5 时 |
-| P4 | 配置版本控制 | 运营频繁改配置时 |
+```python
+# domains/entitlement/services/workspace_override_service.py
+
+from typing import Optional
+from datetime import datetime
+from core.database import get_db
+
+class WorkspaceOverrideService:
+    """Workspace 级权限覆盖服务"""
+
+    async def set_workspace_feature(
+        self,
+        workspace_id: str,
+        feature_key: str,
+        override_value: str,
+        reason: str,
+        created_by: str,
+        expires_at: Optional[datetime] = None
+    ) -> dict:
+        """设置 Workspace 级权限"""
+        db = await get_db()
+
+        # 获取旧值
+        old = await db.fetch_one("""
+            SELECT override_value FROM workspace_feature_overrides
+            WHERE workspace_id = $1 AND feature_key = $2
+        """, workspace_id, feature_key)
+
+        # Upsert
+        result = await db.fetch_one("""
+            INSERT INTO workspace_feature_overrides
+            (workspace_id, feature_key, override_value, reason, expires_at, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (workspace_id, feature_key) DO UPDATE SET
+                override_value = EXCLUDED.override_value,
+                reason = EXCLUDED.reason,
+                expires_at = EXCLUDED.expires_at,
+                updated_at = NOW()
+            RETURNING *
+        """, workspace_id, feature_key, override_value, reason, expires_at, created_by)
+
+        # 记录审计日志
+        await db.execute("""
+            INSERT INTO workspace_feature_override_logs
+            (override_id, workspace_id, feature_key, action, old_value, new_value, reason, changed_by)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        """, result['id'], workspace_id, feature_key,
+            'updated' if old else 'created',
+            old['override_value'] if old else None,
+            override_value, reason, created_by)
+
+        return dict(result)
+
+    async def get_workspace_override(
+        self,
+        workspace_id: str,
+        feature_key: str
+    ) -> Optional[dict]:
+        """获取 Workspace 级权限覆盖"""
+        db = await get_db()
+        result = await db.fetch_one("""
+            SELECT * FROM workspace_feature_overrides
+            WHERE workspace_id = $1 AND feature_key = $2
+              AND (expires_at IS NULL OR expires_at > NOW())
+        """, workspace_id, feature_key)
+
+        return dict(result) if result else None
+
+    async def apply_team_plan(
+        self,
+        workspace_id: str,
+        team_tier: str,  # 如 't3'
+        reason: str,
+        created_by: str,
+        expires_at: Optional[datetime] = None
+    ) -> int:
+        """为 Workspace 应用 Team Plan 权限"""
+        from lib.entitlement.inheritance import getTierFeaturesWithInheritance
+
+        tier_features = getTierFeaturesWithInheritance(team_tier)
+        count = 0
+
+        for feature_key, value in tier_features.items():
+            if value == True:
+                await self.set_workspace_feature(
+                    workspace_id=workspace_id,
+                    feature_key=feature_key,
+                    override_value='true',
+                    reason=f"{reason} - {team_tier} 权益",
+                    created_by=created_by,
+                    expires_at=expires_at
+                )
+                count += 1
+
+        return count
+```
+
+#### 7.6.3 使用示例
+
+```python
+# 场景: Workspace Owner 购买 Team Plan，成员获得权限
+
+# 1. Owner 购买 Team Plan 后触发
+workspace_id = 'workspace_abc123'
+
+# 2. 为 Workspace 应用 t3 级别权限
+count = await workspace_override_service.apply_team_plan(
+    workspace_id=workspace_id,
+    team_tier='t3',
+    reason='Team Pro Plan 订阅',
+    created_by='system',
+    expires_at=datetime(2027, 2, 4)  # 订阅到期时间
+)
+print(f"已为 Workspace 设置 {count} 个权限")
+
+# 3. 成员访问时的评估
+# - 成员 user_a (t1) 访问 ai_features
+# - 评估流程:
+#   1. Kill Switch: 通过
+#   2. Feature Flag: 无
+#   3. User Override: 无
+#   4. Group Override: 无
+#   5. Workspace Override: ✅ ai_features = true
+#   → allowed: true, source: 'workspace_override'
+
+# 4. 成员离开 Workspace 后
+# - 评估时 workspaceId 为空或不同
+# - 回退到 User Tier Config (t1)
+# → allowed: false (试用期过期)
+```
+
+---
+
+### 7.7 完整权限评估流程图
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        完整权限评估流程                                       │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+用户请求功能 X
+      │
+      ▼
+┌─────────────────┐
+│ L1: Kill Switch │ ── false ──▶ 返回 disabled
+└────────┬────────┘              (功能全局关闭)
+         │ true
+         ▼
+┌─────────────────┐
+│ L2: Feature Flag│ ── 有 Flag 且关闭 ──▶ 返回 disabled
+│   (灰度+Tier)   │                        (未命中灰度或 Tier 不符)
+└────────┬────────┘
+         │ 无 Flag 或命中
+         ▼
+┌─────────────────┐
+│ L3: User Override│ ── 有 ──▶ 返回 Override 值
+│                 │           (VIP/补偿/Bug隔离)
+└────────┬────────┘
+         │ 无
+         ▼
+┌─────────────────┐
+│ L4: Group Override│ ── 有 ──▶ 返回 Override 值
+│   (用户组权限)  │            (KOL/Beta/Enterprise)
+└────────┬────────┘
+         │ 无
+         ▼
+┌─────────────────┐
+│ L5: Workspace   │ ── 有 ──▶ 返回 Override 值
+│    Override     │           (Team Plan)
+└────────┬────────┘
+         │ 无
+         ▼
+┌─────────────────┐
+│ L6: Tier Config │ ── true ──▶ 返回 allowed
+│  (含继承链)     │ ── trial ──▶ 检查试用期
+│                 │ ── false ──▶ 返回 locked
+└────────┬────────┘
+         │ 无配置
+         ▼
+┌─────────────────┐
+│ L7: Fallback    │ ── 返回兜底默认值
+└─────────────────┘   (数据库不可用时)
+```
+
+---
+
+### 7.8 实施计划
+
+| 阶段 | 场景 | 工作量 | 优先级 |
+|:----:|------|:------:|:------:|
+| Phase 1 | 灰度 + Tier 优先级 (文档 + 代码调整) | 2d | **P0** |
+| Phase 2 | 权限继承链 (TIER_INHERITANCE) | 1d | **P0** |
+| Phase 3 | 权限批量管理 (用户组系统) | 3d | **P1** |
+| Phase 4 | 配置版本控制 (快照 + 回滚) | 2d | **P1** |
+| Phase 5 | 多租户权限 (Workspace Override) | 2d | **P2** |
+
+**总工作量**: 约 10 人天
 
 ---
 
@@ -1088,6 +2055,7 @@ CREATE TABLE config_snapshots (
 | 2026-02-04 | v1.5 | 新增权限优先级规则详解：参考 LaunchDarkly/Split.io/Unleash 业界最佳实践，含流程图和设计原则 |
 | 2026-02-04 | v1.6 | 全面审计修复：补充 t4 兜底配置 (EMERGENCY_TIER_CONFIGS/TIER_FEATURES_FALLBACK/JSON 配置)；补充 compareTier() 函数定义；补充 user_feature_override_logs 审计日志表；统一 Feature Key 命名 (LEGACY_KEY_MAP 更新) |
 | 2026-02-04 | v1.7 | 新增"后续扩展场景 (业界预判)"：灰度+Tier 组合、多租户权限、权限继承链、动态定价实验、权限批量管理、配置版本控制，含实施优先级建议 |
+| 2026-02-04 | v1.8 | **扩展场景完整实现方案**：(1) 灰度+Tier 完整优先级规则 + 评估引擎；(2) 权限继承链 TIER_INHERITANCE + 增量配置；(3) 用户组批量授权 3 表 + Service；(4) 配置版本控制快照 + 回滚；(5) Workspace 级权限 + Team Plan 支持；含完整流程图和实施计划 |
 
 ---
 
