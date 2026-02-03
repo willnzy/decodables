@@ -1,6 +1,6 @@
 # 功能权限矩阵
 
-> **版本**: v1.3
+> **版本**: v1.4
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **说明**: 本文档是功能权限的**唯一数据源**，后端配置和前端实现都以此为准
@@ -184,14 +184,15 @@
 |------|----------|------|---------|
 | **全局开关** | `system_configs.feature.{key}.enabled` | 所有用户统一开/关 | 功能下线、运维紧急关闭 |
 | **按 Tier 配置** | `system_configs.tier.{tier}.features` | 不同 Tier 不同权限 | 常规权限控制 |
-| **用户 Override** | `user_feature_overrides` 表 | 为特定用户开通/关闭功能 | VIP 用户、测试用户、补偿用户 |
+| **用户 Override** | `user_feature_overrides` 表 | 为特定用户开通/关闭功能 | VIP 用户、测试用户、补偿用户、AB 实验 |
 
 **优先级**: `全局开关 (关闭)` > `用户 Override` > `Tier 配置` > `默认值`
 
-> **用户 Override 场景**:
-> - 为特定 t1 用户开通 Pro 功能（如补偿、测试）
-> - 为 Beta 测试用户开通未上线功能
-> - 临时为用户关闭某个有 Bug 的功能
+> **用户 Override 使用场景**:
+> - **客服补偿**: 为特定 t1 用户开通 Pro 功能
+> - **Beta 测试**: 为测试用户开通未上线功能
+> - **Bug 隔离**: 临时为某用户关闭有 Bug 的功能
+> - **AB 实验**: 跨 Tier 用户验证某个功能 (实验组获得该功能，对照组不变)
 
 ### 4.3 配置值类型
 
@@ -287,6 +288,36 @@ VALUES ('user_beta001', 'ai_features', 'true', 'Beta 测试计划', NOW() + INTE
 -- 场景 3: 临时关闭某用户的有 Bug 功能
 INSERT INTO user_feature_overrides (user_id, feature_key, override_value, reason, created_by)
 VALUES ('user_xyz789', 'zip_export', 'false', '该用户遇到导出 Bug, 临时关闭', 'admin_user_id');
+
+-- 场景 4: AB 实验 - 让 t1 用户也能使用 AI 功能 (实验组)
+-- 实验组用户批量添加 override
+INSERT INTO user_feature_overrides (user_id, feature_key, override_value, reason, expires_at, created_by)
+VALUES
+  ('user_exp001', 'ai_features', 'true', 'AB实验#EXP-2026-001 实验组', NOW() + INTERVAL '14 days', 'admin_user_id'),
+  ('user_exp002', 'ai_features', 'true', 'AB实验#EXP-2026-001 实验组', NOW() + INTERVAL '14 days', 'admin_user_id');
+-- 对照组用户不添加 override，按原有 Tier 权限
+```
+
+**AB 实验与 user_feature_overrides 的配合**:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ AB 实验: 验证 AI 功能对 t1 用户的转化效果                      │
+├─────────────────────────────────────────────────────────────┤
+│ 实验组 (Treatment):                                          │
+│   - 随机选取 1000 个 t1 用户                                  │
+│   - 添加 user_feature_overrides: ai_features = true          │
+│   - 这些用户即使是 t1，也能使用 AI 功能                        │
+│                                                             │
+│ 对照组 (Control):                                            │
+│   - 随机选取 1000 个 t1 用户                                  │
+│   - 不添加 override，按 Tier 配置: ai_features = "trial"      │
+│   - 试用期内可用，超出后锁定                                    │
+├─────────────────────────────────────────────────────────────┤
+│ 实验结束后:                                                   │
+│   - 删除 user_feature_overrides 中该实验的记录                 │
+│   - 或设置 expires_at 自动过期                                │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ### 4.5 配置读取优先级
@@ -689,6 +720,7 @@ export function normalizeFeatureKey(key: string): string {
 | 2026-02-03 | v1.1 | 补充遗漏：TIER_FEATURES_FALLBACK、EMERGENCY_TIER_CONFIGS、LEGACY_KEY_MAP、完整 JSON 配置 |
 | 2026-02-04 | v1.2 | 基于 CSV 表格校准：添加控制方式列、第 7-9 行权限配置、页面访问控制规则 (含已登录用户直接访问路径的处理)、UI 组件控制方式 |
 | 2026-02-04 | v1.3 | 新增用户级功能覆盖 (user_feature_overrides)：支持为特定用户开通/关闭功能，与 Tier 配置解耦 |
+| 2026-02-04 | v1.4 | 补充 AB 实验场景：跨 Tier 用户验证功能的实验组/对照组配置示例 |
 
 ---
 
