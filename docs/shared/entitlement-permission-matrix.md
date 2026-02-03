@@ -1,6 +1,6 @@
 # 功能权限矩阵
 
-> **版本**: v1.8
+> **版本**: v1.9
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **说明**: 本文档是功能权限的**唯一数据源**，后端配置和前端实现都以此为准
@@ -2043,7 +2043,636 @@ print(f"已为 Workspace 设置 {count} 个权限")
 
 ---
 
-## 八、变更记录
+## 八、权限边界场景处理
+
+> 本章节定义试用期过期、Tier 降级、以及其他业界常见的边界场景处理规则。
+
+### 8.1 t1 试用期过期场景
+
+#### 8.1.1 试用期状态检测
+
+```typescript
+// lib/entitlement/trial.ts
+
+interface TrialStatus {
+  isInTrial: boolean;           // 是否在试用期内
+  trialDays: number;            // 总试用天数
+  daysRemaining: number;        // 剩余天数 (0 = 已过期)
+  trialEndDate: Date;           // 试用期结束日期
+  registeredAt: Date;           // 注册时间
+}
+
+async function getTrialStatus(userId: string): Promise<TrialStatus> {
+  const user = await db.fetch('SELECT created_at FROM profiles WHERE user_id = $1', userId);
+  const trialDays = await getConfig('trial.default_days') || 7;
+
+  const registeredAt = new Date(user.created_at);
+  const trialEndDate = new Date(registeredAt);
+  trialEndDate.setDate(trialEndDate.getDate() + trialDays);
+
+  const now = new Date();
+  const daysRemaining = Math.max(0, Math.ceil((trialEndDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)));
+
+  return {
+    isInTrial: daysRemaining > 0,
+    trialDays,
+    daysRemaining,
+    trialEndDate,
+    registeredAt,
+  };
+}
+```
+
+#### 8.1.2 试用期过期后的项目处理
+
+| 场景 | 试用期内 | 试用期过期后 | 处理方式 |
+|------|:-------:|:----------:|---------|
+| **编辑已有项目** | ✅ 可编辑 | ❌ 只读 | 进入编辑页面时检测，过期则显示只读模式 + 升级提示 |
+| **创建新项目** | ✅ 可创建 (≤1) | ❌ 不可创建 | 新建按钮带锁，点击弹 UpgradeModal |
+| **复制项目** | ✅ 可复制 (≤1) | ❌ 不可复制 | 复制按钮带锁，点击弹 UpgradeModal |
+| **删除项目** | ✅ 可删除 | ✅ 可删除 | 允许删除，减少资源占用 |
+| **查看项目列表** | ✅ 可查看 | ✅ 可查看 | 允许查看，项目卡片显示 "只读" 标签 |
+| **发布到商城** | ✅ 可发布 | ❌ 不可发布 | Publish 按钮带锁 |
+| **导出 PDF/ZIP** | ✅ 可导出 | PDF ✅ / ZIP ❌ | PDF 保留，ZIP 锁定 |
+
+**编辑器只读模式实现**:
+
+```typescript
+// components/editor/EditorPage.tsx
+
+function EditorPage({ projectId }: { projectId: string }) {
+  const { tier, isWithinTrialPeriod } = useEntitlement();
+  const [isReadOnly, setIsReadOnly] = useState(false);
+
+  useEffect(() => {
+    // t1 试用期过期 → 只读模式
+    if (tier === 't1' && !isWithinTrialPeriod) {
+      setIsReadOnly(true);
+    }
+  }, [tier, isWithinTrialPeriod]);
+
+  if (isReadOnly) {
+    return (
+      <EditorReadOnlyWrapper>
+        <TrialExpiredBanner
+          message="试用期已结束，项目为只读模式"
+          ctaText="升级解锁编辑"
+          onUpgrade={() => openUpgradeModal()}
+        />
+        <Editor readOnly={true} projectId={projectId} />
+      </EditorReadOnlyWrapper>
+    );
+  }
+
+  return <Editor readOnly={false} projectId={projectId} />;
+}
+```
+
+#### 8.1.3 试用期状态 UI 提醒
+
+**试用期内提醒**:
+
+| 剩余天数 | 提醒方式 | 提醒频率 |
+|:-------:|---------|:-------:|
+| 7-4 天 | 顶部 Banner (可关闭) | 每天首次登录 |
+| 3-1 天 | 顶部 Banner (不可关闭) + 编辑器内提示 | 每次进入 |
+| 0 天 (当天) | Modal 弹窗 + Banner | 每次进入 |
+| 已过期 | 持续 Banner + 只读模式 | 持续显示 |
+
+**UI 组件**:
+
+```typescript
+// components/trial/TrialStatusBanner.tsx
+
+interface TrialBannerProps {
+  daysRemaining: number;
+  onUpgrade: () => void;
+  onDismiss?: () => void;
+}
+
+function TrialStatusBanner({ daysRemaining, onUpgrade, onDismiss }: TrialBannerProps) {
+  // 根据剩余天数显示不同样式
+  const variant = daysRemaining <= 1 ? 'urgent' : daysRemaining <= 3 ? 'warning' : 'info';
+  const canDismiss = daysRemaining > 3;
+
+  const messages = {
+    urgent: `试用期今天结束！升级后继续使用所有功能`,
+    warning: `试用期还剩 ${daysRemaining} 天`,
+    info: `试用期还剩 ${daysRemaining} 天，探索所有功能`,
+  };
+
+  return (
+    <Banner variant={variant} dismissible={canDismiss} onDismiss={onDismiss}>
+      <span>{messages[variant]}</span>
+      <Button size="sm" onClick={onUpgrade}>
+        {daysRemaining <= 1 ? '立即升级' : '查看套餐'}
+      </Button>
+    </Banner>
+  );
+}
+
+// components/trial/TrialExpiredModal.tsx
+
+function TrialExpiredModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+  return (
+    <Modal isOpen={isOpen} onClose={onClose}>
+      <ModalHeader>
+        <Icon name="clock" className="text-amber-500" />
+        试用期已结束
+      </ModalHeader>
+      <ModalBody>
+        <p>您的 7 天免费试用已结束。</p>
+        <p className="mt-2">升级后可以：</p>
+        <ul className="list-disc ml-4 mt-2">
+          <li>继续编辑您的项目</li>
+          <li>创建更多项目和文件夹</li>
+          <li>使用 AI 生成功能</li>
+          <li>导出 ZIP 文件</li>
+        </ul>
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onClose}>以后再说</Button>
+        <Button variant="primary" onClick={() => openUpgradeModal()}>查看套餐</Button>
+      </ModalFooter>
+    </Modal>
+  );
+}
+```
+
+#### 8.1.4 试用期配置 Key
+
+```sql
+-- system_configs 配置项
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('trial.default_days', '7', 'integer', 'trial', '默认试用天数'),
+('trial.warning_days', '3', 'integer', 'trial', '提前警告天数'),
+('trial.urgent_days', '1', 'integer', 'trial', '紧急提醒天数'),
+('trial.show_modal_on_expire', 'true', 'boolean', 'trial', '过期当天是否弹窗');
+```
+
+---
+
+### 8.2 Tier 降级场景 (t3→t2, t2→t1)
+
+> 参考业界最佳实践: Notion, Figma, Slack, Dropbox, Canva
+
+#### 8.2.1 降级触发条件
+
+| 触发条件 | 说明 |
+|---------|------|
+| 订阅到期未续费 | 付费周期结束，未自动续费 |
+| 主动取消订阅 | 用户主动取消，当前周期结束后生效 |
+| 支付失败 | 连续 N 次扣款失败后自动降级 |
+| 退款 | 用户申请退款成功后 |
+| Admin 操作 | 管理员手动调整用户 Tier |
+
+#### 8.2.2 降级处理策略 (Graceful Degradation)
+
+**核心原则** (参考业界):
+
+| 原则 | 说明 | 参考产品 |
+|------|------|---------|
+| **数据不删除** | 用户数据保留，只是无法访问/编辑部分 | Notion, Figma, Dropbox |
+| **宽限期** | 降级后给予 7-30 天宽限期处理超额数据 | Slack, Dropbox |
+| **最旧优先锁定** | 超额资源按创建时间锁定最旧的 | Notion |
+| **核心功能保留** | 查看、导出等基础功能保留 | 所有产品 |
+| **明确告知** | 清晰告知哪些受影响、如何处理 | 所有产品 |
+
+#### 8.2.3 各资源降级处理规则
+
+##### Workspace 降级
+
+| 原 Tier | 新 Tier | 原配额 | 新配额 | 处理方式 |
+|:-------:|:-------:|:-----:|:-----:|---------|
+| t3 | t2 | unlimited | 1 | 保留所有，超额的标记为 "只读" |
+| t3 | t1 | unlimited | 1 | 保留所有，超额的标记为 "只读" |
+| t2 | t1 | 1 | 1 | 无变化 |
+
+**处理逻辑**:
+```typescript
+// 降级时处理 Workspace
+async function handleWorkspaceDowngrade(userId: string, newTier: string) {
+  const maxWorkspaces = TIER_QUOTAS[newTier].maxWorkspaces;
+  if (maxWorkspaces === -1) return; // unlimited
+
+  const workspaces = await db.fetch(`
+    SELECT id, name, created_at FROM workspaces
+    WHERE owner_id = $1
+    ORDER BY created_at ASC
+  `, userId);
+
+  // 超额的 Workspace 标记为只读
+  for (let i = maxWorkspaces; i < workspaces.length; i++) {
+    await db.execute(`
+      UPDATE workspaces
+      SET is_read_only = true,
+          read_only_reason = 'tier_downgrade',
+          read_only_at = NOW()
+      WHERE id = $1
+    `, workspaces[i].id);
+  }
+}
+```
+
+##### Project 降级
+
+| 原 Tier | 新 Tier | 原配额 | 新配额 | 处理方式 |
+|:-------:|:-------:|:-----:|:-----:|---------|
+| t3 | t2 | unlimited | 10 | 保留所有，超额的标记为 "只读" |
+| t3 | t1 | unlimited | 1 | 保留所有，超额的标记为 "只读" |
+| t2 | t1 | 10 | 1 | 保留所有，超额的标记为 "只读" |
+
+**UI 显示**:
+- 只读项目卡片显示 🔒 图标
+- 点击只读项目 → 提示 "升级后可编辑"
+- 可以查看、导出 PDF，但不能编辑
+
+##### Folder 降级
+
+| 原 Tier | 新 Tier | 原配额 | 新配额 | 处理方式 |
+|:-------:|:-------:|:-----:|:-----:|---------|
+| t3 | t2 | 200 | 20 | 超额文件夹只读，内部项目只读 |
+| t3 | t1 | 200 | 1 | 超额文件夹只读，内部项目只读 |
+| t2 | t1 | 20 | 1 | 超额文件夹只读，内部项目只读 |
+
+##### 自定义素材降级
+
+| 原 Tier | 新 Tier | 原配额 | 新配额 | 处理方式 |
+|:-------:|:-------:|:-----:|:-----:|---------|
+| t3 | t2 | unlimited | 50 | 超额素材只读，可在项目中使用但不能编辑 |
+| t3 | t1 | unlimited | 0 | 所有自定义素材只读 |
+| t2 | t1 | 50 | 0 | 所有自定义素材只读 |
+
+**注意**: t1 试用期过期后 `max_custom_assets = 0`，但已上传的素材仍可在项目中使用
+
+##### Workspace 成员降级 (邀请的用户)
+
+| 原 Tier | 新 Tier | 能力变化 | 处理方式 |
+|:-------:|:-------:|---------|---------|
+| t3 | t2/t1 | 失去邀请能力 | 已邀请的成员**保留**，但无法再邀请新成员 |
+
+**业界参考 (Notion, Figma)**:
+- 已邀请的成员不会被踢出
+- 成员可以继续访问和编辑 (如果项目未被锁定)
+- Owner 无法再邀请新成员
+- 成员数量不设上限锁定 (仅锁定邀请入口)
+
+##### 商城相关降级
+
+| 功能 | t3 | t2 | t1 | 降级处理 |
+|------|:--:|:--:|:--:|---------|
+| 浏览商城 | ✅ | ✅ | ❌ | t2→t1: 入口锁定 |
+| 购买商城 | ✅ | ✅ | ❌ | t2→t1: 入口锁定，已购买的项目保留 |
+| 发布免费 | ✅ | ✅ | ❌ | t2→t1: 入口锁定，已发布的**保留上架** |
+| 发布付费 | ✅ | ❌ | ❌ | t3→t2: 入口锁定，已发布的**保留上架** |
+
+**已发布商品处理**:
+- 降级后已发布的商品**继续保持上架**
+- 用户仍可获得销售收入
+- 但无法发布新商品或修改已发布商品的价格
+- 可以下架已发布的商品
+
+#### 8.2.4 宽限期 (Grace Period)
+
+```sql
+-- 宽限期配置
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('downgrade.grace_period_days', '7', 'integer', 'downgrade', '降级宽限期天数'),
+('downgrade.lock_after_grace', 'true', 'boolean', 'downgrade', '宽限期后是否锁定超额资源');
+```
+
+**宽限期流程**:
+
+```
+Day 0: 降级生效
+├── 发送邮件通知
+├── 应用内 Banner 提醒
+├── 超额资源标记为 "即将锁定"
+└── 用户可正常使用所有资源
+
+Day 1-6: 宽限期
+├── 每天发送提醒邮件 (可配置)
+├── Banner 显示剩余天数
+└── 用户可正常使用，建议整理资源
+
+Day 7: 宽限期结束
+├── 超额资源正式锁定为 "只读"
+├── 发送最终通知邮件
+└── 锁定资源显示 🔒 图标
+```
+
+#### 8.2.5 降级通知邮件模板
+
+```typescript
+// 降级通知邮件
+const downgradeEmailTemplate = {
+  subject: '您的 Make Decodables 订阅已变更',
+  body: `
+    亲爱的 {{userName}}，
+
+    您的订阅已从 {{oldTier}} 变更为 {{newTier}}。
+
+    以下是受影响的内容：
+    {{#if exceededWorkspaces}}
+    • Workspace: {{exceededWorkspaces}} 个将在 {{gracePeriodDays}} 天后变为只读
+    {{/if}}
+    {{#if exceededProjects}}
+    • 项目: {{exceededProjects}} 个将在 {{gracePeriodDays}} 天后变为只读
+    {{/if}}
+    {{#if exceededFolders}}
+    • 文件夹: {{exceededFolders}} 个将在 {{gracePeriodDays}} 天后变为只读
+    {{/if}}
+
+    在宽限期内，您可以：
+    • 导出项目数据
+    • 删除不需要的项目
+    • 重新订阅以保留所有访问权限
+
+    如有任何问题，请联系我们的客服团队。
+
+    Make Decodables 团队
+  `
+};
+```
+
+#### 8.2.6 降级处理服务
+
+```python
+# domains/entitlement/services/downgrade_service.py
+
+from datetime import datetime, timedelta
+from typing import List, Dict
+
+class DowngradeService:
+    """Tier 降级处理服务"""
+
+    async def process_downgrade(
+        self,
+        user_id: str,
+        old_tier: str,
+        new_tier: str,
+        reason: str  # 'subscription_expired' | 'cancelled' | 'payment_failed' | 'refund' | 'admin'
+    ) -> Dict:
+        """处理 Tier 降级"""
+
+        # 1. 获取配额变化
+        old_quotas = TIER_QUOTAS[old_tier]
+        new_quotas = TIER_QUOTAS[new_tier]
+
+        # 2. 检查超额资源
+        exceeded = await self._check_exceeded_resources(user_id, new_quotas)
+
+        # 3. 获取宽限期配置
+        grace_days = await get_config('downgrade.grace_period_days') or 7
+        grace_end = datetime.now() + timedelta(days=grace_days)
+
+        # 4. 标记超额资源 (宽限期内)
+        await self._mark_resources_pending_lock(user_id, exceeded, grace_end)
+
+        # 5. 记录降级事件
+        await self._log_downgrade_event(user_id, old_tier, new_tier, reason, exceeded)
+
+        # 6. 发送通知
+        await self._send_downgrade_notification(user_id, old_tier, new_tier, exceeded, grace_end)
+
+        # 7. 调度宽限期结束任务
+        await self._schedule_grace_period_end(user_id, grace_end)
+
+        return {
+            'old_tier': old_tier,
+            'new_tier': new_tier,
+            'exceeded_resources': exceeded,
+            'grace_period_end': grace_end
+        }
+
+    async def _check_exceeded_resources(self, user_id: str, new_quotas: Dict) -> Dict:
+        """检查超额资源"""
+        exceeded = {
+            'workspaces': [],
+            'projects': [],
+            'folders': [],
+            'custom_assets': []
+        }
+
+        # 检查 Workspace
+        if new_quotas['max_workspaces'] != -1:
+            workspaces = await db.fetch_all("""
+                SELECT id, name FROM workspaces
+                WHERE owner_id = $1
+                ORDER BY created_at ASC
+            """, user_id)
+
+            if len(workspaces) > new_quotas['max_workspaces']:
+                exceeded['workspaces'] = [
+                    w['id'] for w in workspaces[new_quotas['max_workspaces']:]
+                ]
+
+        # 检查 Projects
+        if new_quotas['max_projects'] != -1:
+            projects = await db.fetch_all("""
+                SELECT id, name FROM projects
+                WHERE owner_id = $1
+                ORDER BY created_at ASC
+            """, user_id)
+
+            if len(projects) > new_quotas['max_projects']:
+                exceeded['projects'] = [
+                    p['id'] for p in projects[new_quotas['max_projects']:]
+                ]
+
+        # 检查 Folders
+        if new_quotas['max_folders'] != -1:
+            folders = await db.fetch_all("""
+                SELECT id, name FROM folders
+                WHERE owner_id = $1
+                ORDER BY created_at ASC
+            """, user_id)
+
+            if len(folders) > new_quotas['max_folders']:
+                exceeded['folders'] = [
+                    f['id'] for f in folders[new_quotas['max_folders']:]
+                ]
+
+        # 检查自定义素材
+        if new_quotas['max_custom_assets'] != -1:
+            assets = await db.fetch_all("""
+                SELECT id FROM custom_assets
+                WHERE owner_id = $1
+                ORDER BY created_at ASC
+            """, user_id)
+
+            if len(assets) > new_quotas['max_custom_assets']:
+                exceeded['custom_assets'] = [
+                    a['id'] for a in assets[new_quotas['max_custom_assets']:]
+                ]
+
+        return exceeded
+
+    async def _mark_resources_pending_lock(
+        self,
+        user_id: str,
+        exceeded: Dict,
+        grace_end: datetime
+    ):
+        """标记资源为待锁定状态"""
+        for ws_id in exceeded['workspaces']:
+            await db.execute("""
+                UPDATE workspaces SET
+                    pending_lock = true,
+                    pending_lock_at = $1,
+                    lock_reason = 'tier_downgrade'
+                WHERE id = $2
+            """, grace_end, ws_id)
+
+        for proj_id in exceeded['projects']:
+            await db.execute("""
+                UPDATE projects SET
+                    pending_lock = true,
+                    pending_lock_at = $1,
+                    lock_reason = 'tier_downgrade'
+                WHERE id = $2
+            """, grace_end, proj_id)
+
+        # ... 类似处理 folders 和 custom_assets
+
+    async def execute_grace_period_end(self, user_id: str):
+        """宽限期结束，正式锁定资源"""
+        await db.execute("""
+            UPDATE workspaces SET
+                is_read_only = true,
+                read_only_at = NOW(),
+                pending_lock = false
+            WHERE owner_id = $1 AND pending_lock = true
+        """, user_id)
+
+        await db.execute("""
+            UPDATE projects SET
+                is_read_only = true,
+                read_only_at = NOW(),
+                pending_lock = false
+            WHERE owner_id = $1 AND pending_lock = true
+        """, user_id)
+
+        # ... 类似处理其他资源
+
+        # 发送锁定完成通知
+        await self._send_lock_completed_notification(user_id)
+```
+
+---
+
+### 8.3 其他业界常见边界场景
+
+#### 8.3.1 升级场景 (Upgrade)
+
+| 场景 | 处理方式 |
+|------|---------|
+| t1→t2 | 立即解锁 t2 功能，只读项目恢复可编辑 |
+| t1→t3 | 立即解锁 t3 功能，只读项目恢复可编辑 |
+| t2→t3 | 立即解锁 t3 功能 |
+| 试用期内升级 | 试用期状态取消，进入正式订阅 |
+
+**升级处理**:
+```typescript
+async function handleUpgrade(userId: string, newTier: string) {
+  // 1. 解锁所有只读资源
+  await db.execute(`
+    UPDATE workspaces SET is_read_only = false, read_only_at = NULL
+    WHERE owner_id = $1 AND read_only_reason = 'tier_downgrade'
+  `, userId);
+
+  await db.execute(`
+    UPDATE projects SET is_read_only = false, read_only_at = NULL
+    WHERE owner_id = $1 AND read_only_reason = 'tier_downgrade'
+  `, userId);
+
+  // 2. 取消待锁定状态
+  await db.execute(`
+    UPDATE workspaces SET pending_lock = false, pending_lock_at = NULL
+    WHERE owner_id = $1
+  `, userId);
+
+  // 3. 发送升级成功通知
+  await sendUpgradeNotification(userId, newTier);
+}
+```
+
+#### 8.3.2 支付失败重试
+
+| 重试次数 | 间隔 | 操作 |
+|:-------:|:----:|------|
+| 第 1 次 | 立即 | 自动重试 |
+| 第 2 次 | 3 天后 | 自动重试 + 邮件通知 |
+| 第 3 次 | 7 天后 | 自动重试 + 邮件警告 |
+| 第 4 次 | 14 天后 | 最终重试 + 降级预警 |
+| 全部失败 | - | 自动降级 + 宽限期开始 |
+
+#### 8.3.3 账户删除 / 数据导出
+
+| 场景 | 处理方式 |
+|------|---------|
+| **数据导出** | 任何 Tier 都可以导出自己的项目数据 (PDF/JSON) |
+| **账户删除请求** | 发起后 30 天内可取消，30 天后永久删除 |
+| **删除后数据** | 所有数据永久删除，商城已发布商品下架 |
+
+#### 8.3.4 并发订阅冲突
+
+| 场景 | 处理方式 |
+|------|---------|
+| 重复订阅同一 Plan | 拒绝，提示已订阅 |
+| 订阅更低 Tier | 确认降级意图，当前周期结束后生效 |
+| 订阅更高 Tier | 立即升级，按比例退还原订阅余额 |
+| 订阅不同周期 | 当前周期结束后切换 |
+
+#### 8.3.5 家庭/团队共享 (未来)
+
+| 场景 | 处理方式 |
+|------|---------|
+| Owner 降级 | 所有成员权限跟随降级 |
+| Owner 升级 | 所有成员权限跟随升级 |
+| 成员自己有订阅 | 取较高的 Tier |
+| 成员离开团队 | 回退到自己的订阅 Tier |
+
+#### 8.3.6 促销码 / 优惠
+
+| 场景 | 处理方式 |
+|------|---------|
+| 限时免费 Pro | 创建 `user_feature_overrides` 带过期时间 |
+| 教育优惠 | 用户组 `edu_discount`，长期有效 |
+| 推荐奖励 | 延长订阅时长 或 积分奖励 |
+| 黑五折扣 | 通过 Stripe Coupon 处理 |
+
+#### 8.3.7 异常场景处理
+
+| 场景 | 处理方式 |
+|------|---------|
+| Stripe Webhook 延迟 | 本地缓存 Tier，Webhook 到达后同步 |
+| 数据库不一致 | 定时任务检查 Stripe 状态同步 |
+| 时区问题 | 所有时间使用 UTC，前端转换显示 |
+| 试用期中途升级又取消 | 恢复试用期剩余天数 (可配置) |
+
+---
+
+### 8.4 场景支持矩阵汇总
+
+| 场景 | 支持情况 | 说明 |
+|------|:--------:|------|
+| t1 试用期过期 - 项目只读 | ✅ | 进入编辑器时检测 |
+| t1 试用期过期 - 禁止新建/复制 | ✅ | 按钮带锁 |
+| t1 试用期过期 - 允许删除 | ✅ | 减少资源占用 |
+| t1 试用期过期 - 状态提醒 | ✅ | Banner + Modal |
+| Tier 降级 - 数据保留 | ✅ | 只锁定不删除 |
+| Tier 降级 - 宽限期 | ✅ | 可配置天数 |
+| Tier 降级 - 超额锁定 | ✅ | 最旧优先 |
+| Tier 降级 - 成员保留 | ✅ | 已邀请的不踢出 |
+| Tier 降级 - 商城商品保留 | ✅ | 继续上架 |
+| Tier 升级 - 立即生效 | ✅ | 解锁所有资源 |
+| 支付失败重试 | ✅ | 4 次重试机制 |
+| 数据导出 | ✅ | 任何 Tier 可导出 |
+
+---
+
+## 九、变更记录
 
 | 日期 | 版本 | 变更内容 |
 |------|------|---------|
@@ -2056,6 +2685,7 @@ print(f"已为 Workspace 设置 {count} 个权限")
 | 2026-02-04 | v1.6 | 全面审计修复：补充 t4 兜底配置 (EMERGENCY_TIER_CONFIGS/TIER_FEATURES_FALLBACK/JSON 配置)；补充 compareTier() 函数定义；补充 user_feature_override_logs 审计日志表；统一 Feature Key 命名 (LEGACY_KEY_MAP 更新) |
 | 2026-02-04 | v1.7 | 新增"后续扩展场景 (业界预判)"：灰度+Tier 组合、多租户权限、权限继承链、动态定价实验、权限批量管理、配置版本控制，含实施优先级建议 |
 | 2026-02-04 | v1.8 | **扩展场景完整实现方案**：(1) 灰度+Tier 完整优先级规则 + 评估引擎；(2) 权限继承链 TIER_INHERITANCE + 增量配置；(3) 用户组批量授权 3 表 + Service；(4) 配置版本控制快照 + 回滚；(5) Workspace 级权限 + Team Plan 支持；含完整流程图和实施计划 |
+| 2026-02-04 | v1.9 | **权限边界场景处理**：(1) t1 试用期过期完整处理 (项目只读/禁止新建复制/允许删除/状态提醒)；(2) Tier 降级 Graceful Degradation (数据保留/宽限期/超额锁定/成员保留/商城商品保留)；(3) 其他业界场景 (升级/支付失败重试/账户删除/并发订阅/促销码) |
 
 ---
 
