@@ -425,6 +425,11 @@ CREATE TABLE IF NOT EXISTS workspaces (
 CREATE INDEX IF NOT EXISTS idx_workspaces_owner ON workspaces(owner_id);
 CREATE INDEX IF NOT EXISTS idx_workspaces_default ON workspaces(owner_id, is_default) WHERE is_default = TRUE;
 
+-- 唯一约束: 每个用户只能有一个 active 的 default workspace
+-- 防止并发创建导致的重复 workspace 问题
+CREATE UNIQUE INDEX IF NOT EXISTS idx_workspaces_one_default_per_owner
+ON workspaces(owner_id) WHERE is_default = TRUE AND is_active = TRUE;
+
 -- 触发器: 更新 updated_at
 DROP TRIGGER IF EXISTS update_workspaces_updated_at ON workspaces;
 CREATE TRIGGER update_workspaces_updated_at
@@ -3987,6 +3992,72 @@ WHERE is_deleted = false;
 CREATE INDEX IF NOT EXISTS idx_marketplace_listings_published
 ON marketplace_listings(is_public, is_deleted, moderation_status, created_at DESC)
 WHERE is_public = true AND is_deleted = false AND moderation_status = 'approved';
+
+
+-- ============================================================================
+-- RPC: get_or_create_default_workspace
+-- 原子性获取或创建用户的默认 workspace，消除并发竞态条件
+-- ============================================================================
+CREATE OR REPLACE FUNCTION get_or_create_default_workspace(p_owner_id UUID)
+RETURNS JSON
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_workspace RECORD;
+BEGIN
+    -- Step 1: 尝试获取已有的 default workspace
+    SELECT * INTO v_workspace
+    FROM workspaces
+    WHERE owner_id = p_owner_id
+      AND is_default = TRUE
+      AND is_active = TRUE
+    LIMIT 1;
+
+    -- Step 2: 如果找到，直接返回
+    IF FOUND THEN
+        RETURN json_build_object(
+            'id', v_workspace.id,
+            'name', v_workspace.name,
+            'description', v_workspace.description,
+            'owner_id', v_workspace.owner_id,
+            'is_default', v_workspace.is_default,
+            'is_personal', v_workspace.is_personal,
+            'is_active', v_workspace.is_active,
+            'created_at', v_workspace.created_at,
+            'updated_at', v_workspace.updated_at
+        );
+    END IF;
+
+    -- Step 3: 不存在，尝试插入（唯一索引保证并发安全）
+    INSERT INTO workspaces (name, owner_id, is_default, is_personal, is_active)
+    VALUES ('My Workspace', p_owner_id, TRUE, TRUE, TRUE)
+    ON CONFLICT (owner_id) WHERE is_default = TRUE AND is_active = TRUE
+    DO NOTHING;
+
+    -- Step 4: 无论是自己插入的还是并发插入的，都能查到
+    SELECT * INTO v_workspace
+    FROM workspaces
+    WHERE owner_id = p_owner_id
+      AND is_default = TRUE
+      AND is_active = TRUE
+    LIMIT 1;
+
+    RETURN json_build_object(
+        'id', v_workspace.id,
+        'name', v_workspace.name,
+        'description', v_workspace.description,
+        'owner_id', v_workspace.owner_id,
+        'is_default', v_workspace.is_default,
+        'is_personal', v_workspace.is_personal,
+        'is_active', v_workspace.is_active,
+        'created_at', v_workspace.created_at,
+        'updated_at', v_workspace.updated_at
+    );
+END;
+$$
+SET search_path = 'public';
+
+COMMENT ON FUNCTION get_or_create_default_workspace IS '原子性获取或创建用户默认 workspace，防止并发重复创建';
 
 
 -- ============================================================================

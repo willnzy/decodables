@@ -69,24 +69,81 @@ class SupabaseWorkspaceRepository(IWorkspaceRepository):
     async def get_default_by_owner(self, owner_id: str) -> Optional[Workspace]:
         """Get user's default workspace."""
         try:
+            # 使用 .limit(1) 替代 .single()
+            # .single() 在有多行时抛出 PGRST116（与 0 行同一错误码），
+            # 导致代码误判为"不存在"而触发重复创建的恶性循环
             result = await self.client.table("workspaces")\
                 .select("*")\
                 .eq("owner_id", owner_id)\
                 .eq("is_default", True)\
                 .eq("is_active", True)\
-                .single()\
+                .limit(1)\
                 .execute()
 
             if result.data:
-                return Workspace.from_dict(result.data)
+                return Workspace.from_dict(result.data[0])
             return None
 
         except Exception as e:
-            # single() raises when no row found
-            if "No rows found" in str(e) or "PGRST116" in str(e):
-                return None
             logger.error(f"[WorkspaceRepository] get_default_by_owner failed: {e}")
             raise
+
+    @retry_on_network_error()
+    async def get_or_create_default_atomic(self, owner_id: str) -> Workspace:
+        """
+        Atomically get or create user's default workspace via RPC.
+
+        Uses PostgreSQL function with ON CONFLICT to eliminate race conditions.
+        Falls back to application-level get_or_create if RPC not available.
+
+        Args:
+            owner_id: User ID (UUID string)
+
+        Returns:
+            Default Workspace entity (existing or newly created)
+        """
+        try:
+            result = await self.client.rpc(
+                "get_or_create_default_workspace",
+                {"p_owner_id": owner_id},
+            ).execute()
+
+            if result.data:
+                return Workspace.from_dict(result.data)
+
+            # Fallback: should not happen, but defensive
+            logger.warning(
+                f"[WorkspaceRepository] RPC returned empty, "
+                f"falling back to query for user={owner_id}"
+            )
+            return await self.get_default_by_owner(owner_id)
+
+        except Exception as e:
+            # RPC not found (not deployed yet) - graceful fallback
+            if "PGRST202" in str(e):
+                logger.warning(
+                    "[WorkspaceRepository] RPC get_or_create_default_workspace "
+                    "not found, falling back to non-atomic method"
+                )
+                return await self._fallback_get_or_create_default(owner_id)
+            logger.error(
+                f"[WorkspaceRepository] get_or_create_default_atomic failed: {e}"
+            )
+            raise
+
+    async def _fallback_get_or_create_default(self, owner_id: str) -> Workspace:
+        """
+        Non-atomic fallback for get_or_create when RPC is not available.
+
+        This is only used when the RPC function hasn't been deployed yet.
+        """
+        workspace = await self.get_default_by_owner(owner_id)
+        if workspace:
+            return workspace
+
+        # Create new default workspace
+        new_workspace = Workspace.create_default(owner_id=owner_id)
+        return await self.create(new_workspace)
 
     @retry_on_network_error()
     async def get_by_owner(self, owner_id: str) -> List[Workspace]:

@@ -2074,29 +2074,13 @@ DECLARE
 BEGIN
     DELETE FROM error_logs
     WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * p_retention_days;
-    
+
     GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
-    
-    -- 记录清理操作
-    INSERT INTO activity_logs (
-        user_id,
-        action,
-        metadata,
-        created_at
-    ) VALUES (
-        'system',
-        'cleanup_error_logs',
-        jsonb_build_object(
-            'deleted_count', v_deleted_count,
-            'retention_days', p_retention_days,
-            'execution_time', CURRENT_TIMESTAMP
-        ),
-        CURRENT_TIMESTAMP
-    );
-    
+
     RETURN v_deleted_count;
 END;
-$$;
+$$
+SET search_path = 'public';
 
 COMMENT ON FUNCTION cleanup_old_error_logs IS '清理旧的错误日志（保留 N 天）';
 

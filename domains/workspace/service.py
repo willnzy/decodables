@@ -43,8 +43,9 @@ class WorkspaceService:
         """
         Get user's default workspace, create if not exists.
 
-        This is the primary method for Phase 1 - ensures every user
-        has exactly one default workspace.
+        Uses atomic RPC to prevent race conditions from concurrent requests.
+        每个认证 API 请求都会调用此方法 (via dependencies.py)，
+        并发请求下 check-then-create 会产生重复 workspace。
 
         Args:
             user_id: User ID
@@ -52,22 +53,14 @@ class WorkspaceService:
         Returns:
             User's default Workspace (existing or newly created)
         """
-        # Try to get existing default workspace
-        workspace = await self._repo.get_default_by_owner(user_id)
-        if workspace:
-            logger.debug(f"[WorkspaceService] Found existing workspace for user {user_id}")
-            return workspace
+        workspace = await self._repo.get_or_create_default_atomic(user_id)
 
-        # Create new default workspace
-        new_workspace = Workspace.create_default(owner_id=user_id)
-        created = await self._repo.create(new_workspace)
-
-        logger.info(
-            f"[WorkspaceService] Created default workspace: "
-            f"id={created.id}, user={user_id}"
+        logger.debug(
+            f"[WorkspaceService] get_or_create_default: "
+            f"id={workspace.id}, user={user_id}"
         )
 
-        return created
+        return workspace
 
     async def get_user_workspace_id(self, user_id: str) -> str:
         """

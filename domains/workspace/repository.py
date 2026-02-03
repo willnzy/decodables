@@ -46,6 +46,21 @@ class IWorkspaceRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_or_create_default_atomic(self, owner_id: str) -> 'Workspace':
+        """
+        Atomically get or create user's default workspace.
+
+        Uses database-level atomic operation to prevent race conditions.
+
+        Args:
+            owner_id: User ID
+
+        Returns:
+            Default Workspace entity (existing or newly created)
+        """
+        pass
+
+    @abstractmethod
     async def get_by_owner(self, owner_id: str) -> List[Workspace]:
         """
         Get all workspaces for a user.
