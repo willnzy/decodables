@@ -3482,7 +3482,7 @@ BEGIN
     END IF;
 
     -- 2. Advisory lock — 基于 user_id 哈希，防止同一用户并发创建
-    v_lock_key := hashtext(p_user_id);
+    v_lock_key := hashtext(p_user_id::TEXT);
     PERFORM pg_advisory_xact_lock(v_lock_key);
 
     -- 3. 原子限额检查
