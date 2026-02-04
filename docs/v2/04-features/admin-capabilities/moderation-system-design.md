@@ -10,7 +10,7 @@
 **适用范围**: shared  
 **source_repo**: both  
 **sync_required**: yes  
-**来源/依据**: `decodables-fe/app/admin/moderation/`, `decodables/api/admin/moderation.py`
+**来源/依据**: `decodables-fe/app/admin/moderation/`, `decodables-fe/app/admin/moderation/_lib/types.ts`, `decodables-fe/app/admin/moderation/_lib/api.ts`, `decodables/api/admin/moderation.py`, `decodables/domains/moderation/constants.py`
 
 ---
 
@@ -26,20 +26,48 @@
 
 ## 目标
 
-- 提供内容审核与举报处理的统一入口
-- 支持审核决策与状态追踪
-- 降低违规内容暴露风险
+- 统一 Marketplace 内容审核与举报处理入口
+- 明确审核/举报的状态与流转规则
+- 降低违规内容暴露与误处理风险
 
 ## 能力清单
 
-- 内容审核（上架/下架/驳回）
-- 举报列表与详情
+- Marketplace 审核列表与详情
+- 审核动作：通过/驳回/下架/删除
+- 举报列表/统计/详情
 - 举报响应与状态更新
 
 ## 关键流程
 
-- 审核列表 → 详情 → 审核决策
-- 举报列表 → 详情 → 处理反馈
+- 审核列表 → 详情 → 通过/驳回/下架/删除
+- 举报列表 → 统计 → 详情 → 响应（resolve/dismiss）
+
+## 规则与护栏
+
+- 状态/类型枚举校验（后端常量）
+- 审核/举报全链路管理员权限
+- 统一分页：`offset` + `limit`
+- 接口限流（30/min）
+
+## 状态与类型
+
+- 审核状态：`pending` / `approved` / `rejected`
+- 资源类型：`sticker` / `clipart` / `template` / `font` / `all`
+- 举报状态：`pending` / `reviewed` / `resolved` / `dismissed`
+
+## 接口清单（Admin）
+
+- `GET /api/v2/admin/moderation/marketplace/moderation/list`
+- `GET /api/v2/admin/moderation/marketplace/moderation/{listing_id}`
+- `POST /api/v2/admin/moderation/marketplace/moderation/{listing_id}/approve`
+- `POST /api/v2/admin/moderation/marketplace/moderation/{listing_id}/reject`
+- `POST /api/v2/admin/moderation/marketplace/moderation/{listing_id}/delete`
+- `POST /api/v2/admin/moderation/marketplace/moderation/{listing_id}/unpublish`
+
+- `GET /api/v2/admin/moderation/reports`
+- `GET /api/v2/admin/moderation/reports/stats`
+- `GET /api/v2/admin/moderation/reports/{report_id}`
+- `POST /api/v2/admin/moderation/reports/{report_id}/respond`
 
 ## 影响范围
 
