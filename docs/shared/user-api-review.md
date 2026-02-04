@@ -78,8 +78,7 @@
 | 19 | Experiments | POST | /experiments/{experiment_key}/exposure | record_exposure | api/user/experiments.py | 记录曝光事件 |
 | 20 | Experiments | POST | /experiments/{experiment_key}/conversion | record_conversion | api/user/experiments.py | 记录转化事件 |
 | 21 | Experiments | GET | /experiments/user/{user_identifier} | get_user_experiments | api/user/experiments.py | 获取用户实验列表 |
-| 22 |
-| 23 | Feature Flags | GET | /feature-flags/client/flags | get_client_flags | api/user/feature_flags.py | 获取当前用户所有 Flag 状态 |
+| 22 | Feature Flags | GET | /feature-flags/client/flags | get_client_flags | api/user/feature_flags.py | 获取当前用户所有 Flag 状态 |
 | 24 | Feature Flags | GET | /feature-flags/hierarchy | get_hierarchy | api/user/feature_flags.py | 获取 Flag 层级配置 (v1.1) |
 | 25 | Feature Flags | POST | /feature-flags/exposure | record_exposure | api/user/feature_flags.py | 记录 Flag 曝光事件 |
 | 26 | Feature Flags | POST | /feature-flags/conversion | record_conversion | api/user/feature_flags.py | 记录转化事件 (实验) |
@@ -120,82 +119,82 @@
 | 65 | Projects | GET | /projects | get_projects | api/user/projects.py | 获取项目列表 |
 | 66 | Projects | GET | /projects/dashboard | get_dashboard | api/user/projects.py | 仪表板项目视图 |
 | 67 | Projects | GET | /projects/deleted | get_deleted | api/user/projects.py | 获取已删除项目 |
-| 69 | Projects | POST | /projects | create_project | api/user/projects.py | 创建新项目 |
-| 70 | Projects | GET | /projects/{project_id} | get_project | api/user/projects.py | 获取项目详情 |
-| 71 | Projects | PUT | /projects/{project_id} | update_project | api/user/projects.py | 更新项目 |
-| 72 | Projects | DELETE | /projects/{project_id} | delete_project | api/user/projects.py | 删除项目 |
-| 73 | Projects | POST | /projects/{project_id}/restore | restore_project | api/user/projects.py | 恢复已删除项目 |
-| 74 | Projects | POST | /projects/{project_id}/duplicate | duplicate_project | api/user/projects.py | 复制项目 |
-| 74a | Projects | POST | /projects/{project_id}/move | move_project | api/user/projects.py | 移动到文件夹 (v3.33) |
-| 74b | Projects | PATCH | /projects/{project_id}/star | star_project | api/user/projects.py | 切换收藏状态 (v3.33) |
-| 74c | Projects | GET | /projects/folder/{folder_id} | get_projects_by_folder | api/user/projects.py | 获取文件夹内项目 (v3.33) |
-| 74d | Projects | GET | /projects/starred | get_starred_projects | api/user/projects.py | 获取收藏项目 (v3.33) |
-| 75 | Referrals | POST | /referrals | create_referral | api/user/referrals.py | 创建推荐 |
-| 76 | Referrals | GET | /referrals | list_referrals | api/user/referrals.py | 获取推荐列表 |
-| 77 | Referrals | GET | /referrals/stats | get_stats | api/user/referrals.py | 获取推荐统计 |
-| 78 | Referrals | GET | /referrals/code/{referral_code} | validate_code | api/user/referrals.py | 验证推荐码 |
-| 79 | Referrals | POST | /referrals/{referral_id}/complete | complete_referral | api/user/referrals.py | 完成推荐 |
-| 80 | Referrals | GET | /referrals/health | health_check | api/user/referrals.py | 健康检查 |
-| 81 | Resources | GET | /resources | list_resources | api/user/resources.py | 获取资源列表 |
-| 82 | Resources | GET | /resources/types | get_types | api/user/resources.py | 获取资源类型 |
-| 83 | Resources | GET | /resources/categories/{type} | get_categories | api/user/resources.py | 获取分类 |
-| 87 | Resources | GET | /resources/{resource_id} | get_resource | api/user/resources.py | 获取单个资源 |
-| 88 | Support | POST | /support/ticket | create_ticket | api/user/support.py | 创建工单 |
-| 89 | Support | POST | /support/chat | chat | api/user/support.py | AI客服对话 |
-| 90 | Support | POST | /support/contact | contact | api/user/support.py | 联系表单 |
-| 91 | Support | POST | /support/feedback | submit_feedback | api/user/support.py | 反馈提交 |
-| 92 | System Resources | GET | /system_resources | list_system_resources | api/user/system_resources.py | 列出系统资源 |
-| 93 | System Resources | GET | /system_resources/stats | get_stats | api/user/system_resources.py | 获取资源统计 |
-| 94 | System Resources | GET | /system_resources/{resource_id} | get_system_resource | api/user/system_resources.py | 获取单个系统资源 |
-| 95 | System Resources | POST | /system_resources | create_system_resource | api/user/system_resources.py | 创建系统资源 |
-| 96 | System Resources | PATCH | /system_resources/{resource_id} | update_system_resource | api/user/system_resources.py | 更新系统资源 |
-| 97 | System Resources | POST | /system_resources/{resource_id}/replace | replace_resource_file | api/user/system_resources.py | 替换资源文件 |
-| 98 | System Resources | DELETE | /system_resources/{resource_id} | delete_system_resource | api/user/system_resources.py | 删除系统资源 |
-| 99 | System Resources | POST | /system_resources/batch | batch_operation | api/user/system_resources.py | 批量操作 |
-| 100 | System Resources | GET | /system_resources/{resource_id}/audit-log | get_audit_log | api/user/system_resources.py | 获取审计日志 |
-| 101 | Tasks | GET | /tasks/{task_id} | get_task | api/user/tasks.py | 查询任务状态 |
-| 102 | Tasks | POST | /tasks/{task_id}/cancel | cancel_task | api/user/tasks.py | 取消任务 |
-| 103 | Prompt Templates | GET | /prompt_template/asset | list_asset_templates | api/user/templates.py | 列出用户素材提示词模板 |
-| 104 | Prompt Templates | POST | /prompt_template/asset | create_asset_template | api/user/templates.py | 创建用户素材提示词模板 |
-| 105 | Prompt Templates | PUT | /prompt_template/asset/{template_id} | update_asset_template | api/user/templates.py | 更新用户素材提示词模板 |
-| 106 | Prompt Templates | DELETE | /prompt_template/asset/{template_id} | delete_asset_template | api/user/templates.py | 删除用户素材提示词模板 |
-| 107 | Prompt Templates | POST | /prompt_template/asset/{template_id}/use | use_asset_template | api/user/templates.py | 使用用户素材提示词模板 |
-| 108 | Prompt Templates | GET | /prompt_template/page | list_page_templates | api/user/templates.py | 列出用户页面提示词模板 |
-| 109 | Prompt Templates | POST | /prompt_template/page | create_page_template | api/user/templates.py | 创建用户页面提示词模板 |
-| 110 | Prompt Templates | PUT | /prompt_template/page/{template_id} | update_page_template | api/user/templates.py | 更新用户页面提示词模板 |
-| 111 | Prompt Templates | DELETE | /prompt_template/page/{template_id} | delete_page_template | api/user/templates.py | 删除用户页面提示词模板 |
-| 112 | Prompt Templates | POST | /prompt_template/page/{template_id}/use | use_page_template | api/user/templates.py | 使用用户页面提示词模板 |
-| 113 | Themes | GET | /themes/current | get_current_theme | api/user/themes.py | 获取当前主题 |
-| 114 | Tools | POST | /tools/pdf-preview | pdf_preview | api/user/tools.py | PDF预览生成 |
-| 115 | Tools | POST | /tools/ocr | ocr_text | api/user/tools.py | OCR文字识别 |
-| 116 | User Assets | GET | /user_assets | list_user_assets | api/user/user_assets.py | 获取我的资产列表 |
-| 117 | User Assets | POST | /user_assets | upload_asset | api/user/user_assets.py | 上传资产 |
-| 118 | User Assets | DELETE | /user_assets/{asset_id} | delete_asset | api/user/user_assets.py | 删除资产 |
-| 119 | User Assets | POST | /user_assets/from-url | add_asset_from_url | api/user/user_assets.py | 从URL添加资产 |
-| 120 | User Assets | GET | /user_assets/check-url | check_url | api/user/user_assets.py | URL检查 |
-| 121 | User Assets | POST | /user_assets/{asset_id}/increment-usage | increment_usage | api/user/user_assets.py | 使用次数增加 |
-| 122 | User Assets | GET | /user_assets/dashboard | get_asset_dashboard | api/user/user_assets.py | 资产Dashboard (带view过滤) |
-| 124 | User Assets | GET | /user_assets/deleted | get_deleted | api/user/user_assets.py | 已删除资产 |
-| 125 | User Assets | POST | /user_assets/{asset_id}/restore | restore_asset | api/user/user_assets.py | 恢复资产 |
-| 125a | User Assets | POST | /user_assets/{asset_id}/move | move_asset | api/user/user_assets.py | 移动到文件夹 (v3.33) |
-| 125b | User Assets | PATCH | /user_assets/{asset_id}/star | star_asset | api/user/user_assets.py | 切换收藏状态 (v3.33) |
-| 125c | User Assets | GET | /user_assets/folder/{folder_id} | get_assets_by_folder | api/user/user_assets.py | 获取文件夹内资产 (v3.33) |
-| 125d | User Assets | GET | /user_assets/starred | get_starred_assets | api/user/user_assets.py | 获取收藏资产 (v3.33) |
-| 126 | User Profile | GET | /user_profile/me | get_me | api/user/user_profile.py | 获取当前用户信息 |
-| 127 | User Profile | GET | /user_profile/history | get_history | api/user/user_profile.py | 获取操作历史 |
-| 128 | User Profile | GET | /user_profile/purchases | get_purchases | api/user/user_profile.py | 获取购买记录 |
-| 129 | User Profile | GET | /user_profile/notifications | get_notifications | api/user/user_profile.py | 获取通知列表 |
-| 130 | User Profile | POST | /user_profile/notifications/{id}/read | mark_notification_read | api/user/user_profile.py | 标记通知为已读 |
-| 131 | User Profile | POST | /user_profile/notifications/read-all | mark_all_read | api/user/user_profile.py | 标记所有通知为已读 |
-| 132 | User Profile | PUT | /user_profile/timezone | update_timezone | api/user/user_profile.py | 更新时区 |
-| 133 | Webhooks | POST | /webhooks/clerk | - | - | ❌ 已移除 (改用自建认证) |
-| 134 | Webhooks | POST | /webhooks/stripe | stripe_webhook | api/user/webhooks.py | Stripe Webhook处理 |
-| 135 | Folders | GET | /folders | list_folders | api/user/folders.py | 获取文件夹列表 (v3.33) |
-| 136 | Folders | POST | /folders | create_folder | api/user/folders.py | 创建文件夹 (v3.33) |
-| 137 | Folders | PATCH | /folders/{folder_id} | update_folder | api/user/folders.py | 更新文件夹 (v3.33) |
-| 138 | Folders | DELETE | /folders/{folder_id} | delete_folder | api/user/folders.py | 删除文件夹 (v3.33) |
-| 139 | Folders | POST | /folders/reorder | reorder_folders | api/user/folders.py | 重排序文件夹 (v3.33) |
-| 140 | Folders | GET | /folders/{folder_id} | get_folder | api/user/folders.py | 获取文件夹详情 (v3.33) |
+| 68 | Projects | POST | /projects | create_project | api/user/projects.py | 创建新项目 |
+| 69 | Projects | GET | /projects/{project_id} | get_project | api/user/projects.py | 获取项目详情 |
+| 70 | Projects | PUT | /projects/{project_id} | update_project | api/user/projects.py | 更新项目 |
+| 71 | Projects | DELETE | /projects/{project_id} | delete_project | api/user/projects.py | 删除项目 |
+| 72 | Projects | POST | /projects/{project_id}/restore | restore_project | api/user/projects.py | 恢复已删除项目 |
+| 73 | Projects | POST | /projects/{project_id}/duplicate | duplicate_project | api/user/projects.py | 复制项目 |
+| 73a | Projects | POST | /projects/{project_id}/move | move_project | api/user/projects.py | 移动到文件夹 (v3.33) |
+| 73b | Projects | PATCH | /projects/{project_id}/star | star_project | api/user/projects.py | 切换收藏状态 (v3.33) |
+| 73c | Projects | GET | /projects/folder/{folder_id} | get_projects_by_folder | api/user/projects.py | 获取文件夹内项目 (v3.33) |
+| 73d | Projects | GET | /projects/starred | get_starred_projects | api/user/projects.py | 获取收藏项目 (v3.33) |
+| 74 | Referrals | POST | /referrals | create_referral | api/user/referrals.py | 创建推荐 |
+| 75 | Referrals | GET | /referrals | list_referrals | api/user/referrals.py | 获取推荐列表 |
+| 76 | Referrals | GET | /referrals/stats | get_stats | api/user/referrals.py | 获取推荐统计 |
+| 77 | Referrals | GET | /referrals/code/{referral_code} | validate_code | api/user/referrals.py | 验证推荐码 |
+| 78 | Referrals | POST | /referrals/{referral_id}/complete | complete_referral | api/user/referrals.py | 完成推荐 |
+| 79 | Referrals | GET | /referrals/health | health_check | api/user/referrals.py | 健康检查 |
+| 80 | Resources | GET | /resources | list_resources | api/user/resources.py | 获取资源列表 |
+| 81 | Resources | GET | /resources/types | get_types | api/user/resources.py | 获取资源类型 |
+| 82 | Resources | GET | /resources/categories/{type} | get_categories | api/user/resources.py | 获取分类 |
+| 83 | Resources | GET | /resources/{resource_id} | get_resource | api/user/resources.py | 获取单个资源 |
+| 84 | Support | POST | /support/ticket | create_ticket | api/user/support.py | 创建工单 |
+| 85 | Support | POST | /support/chat | chat | api/user/support.py | AI客服对话 |
+| 86 | Support | POST | /support/contact | contact | api/user/support.py | 联系表单 |
+| 87 | Support | POST | /support/feedback | submit_feedback | api/user/support.py | 反馈提交 |
+| 88 | System Resources | GET | /system_resources | list_system_resources | api/user/system_resources.py | 列出系统资源 |
+| 89 | System Resources | GET | /system_resources/stats | get_stats | api/user/system_resources.py | 获取资源统计 |
+| 90 | System Resources | GET | /system_resources/{resource_id} | get_system_resource | api/user/system_resources.py | 获取单个系统资源 |
+| 91 | System Resources | POST | /system_resources | create_system_resource | api/user/system_resources.py | 创建系统资源 |
+| 92 | System Resources | PATCH | /system_resources/{resource_id} | update_system_resource | api/user/system_resources.py | 更新系统资源 |
+| 93 | System Resources | POST | /system_resources/{resource_id}/replace | replace_resource_file | api/user/system_resources.py | 替换资源文件 |
+| 94 | System Resources | DELETE | /system_resources/{resource_id} | delete_system_resource | api/user/system_resources.py | 删除系统资源 |
+| 95 | System Resources | POST | /system_resources/batch | batch_operation | api/user/system_resources.py | 批量操作 |
+| 96 | System Resources | GET | /system_resources/{resource_id}/audit-log | get_audit_log | api/user/system_resources.py | 获取审计日志 |
+| 97 | Tasks | GET | /tasks/{task_id} | get_task | api/user/tasks.py | 查询任务状态 |
+| 98 | Tasks | POST | /tasks/{task_id}/cancel | cancel_task | api/user/tasks.py | 取消任务 |
+| 99 | Prompt Templates | GET | /prompt_template/asset | list_asset_templates | api/user/templates.py | 列出用户素材提示词模板 |
+| 100 | Prompt Templates | POST | /prompt_template/asset | create_asset_template | api/user/templates.py | 创建用户素材提示词模板 |
+| 101 | Prompt Templates | PUT | /prompt_template/asset/{template_id} | update_asset_template | api/user/templates.py | 更新用户素材提示词模板 |
+| 102 | Prompt Templates | DELETE | /prompt_template/asset/{template_id} | delete_asset_template | api/user/templates.py | 删除用户素材提示词模板 |
+| 103 | Prompt Templates | POST | /prompt_template/asset/{template_id}/use | use_asset_template | api/user/templates.py | 使用用户素材提示词模板 |
+| 104 | Prompt Templates | GET | /prompt_template/page | list_page_templates | api/user/templates.py | 列出用户页面提示词模板 |
+| 105 | Prompt Templates | POST | /prompt_template/page | create_page_template | api/user/templates.py | 创建用户页面提示词模板 |
+| 106 | Prompt Templates | PUT | /prompt_template/page/{template_id} | update_page_template | api/user/templates.py | 更新用户页面提示词模板 |
+| 107 | Prompt Templates | DELETE | /prompt_template/page/{template_id} | delete_page_template | api/user/templates.py | 删除用户页面提示词模板 |
+| 108 | Prompt Templates | POST | /prompt_template/page/{template_id}/use | use_page_template | api/user/templates.py | 使用用户页面提示词模板 |
+| 109 | Themes | GET | /themes/current | get_current_theme | api/user/themes.py | 获取当前主题 |
+| 110 | Tools | POST | /tools/pdf-preview | pdf_preview | api/user/tools.py | PDF预览生成 |
+| 111 | Tools | POST | /tools/ocr | ocr_text | api/user/tools.py | OCR文字识别 |
+| 112 | User Assets | GET | /user_assets | list_user_assets | api/user/user_assets.py | 获取我的资产列表 |
+| 113 | User Assets | POST | /user_assets | upload_asset | api/user/user_assets.py | 上传资产 |
+| 114 | User Assets | DELETE | /user_assets/{asset_id} | delete_asset | api/user/user_assets.py | 删除资产 |
+| 115 | User Assets | POST | /user_assets/from-url | add_asset_from_url | api/user/user_assets.py | 从URL添加资产 |
+| 116 | User Assets | GET | /user_assets/check-url | check_url | api/user/user_assets.py | URL检查 |
+| 117 | User Assets | POST | /user_assets/{asset_id}/increment-usage | increment_usage | api/user/user_assets.py | 使用次数增加 |
+| 118 | User Assets | GET | /user_assets/dashboard | get_asset_dashboard | api/user/user_assets.py | 资产Dashboard (带view过滤) |
+| 119 | User Assets | GET | /user_assets/deleted | get_deleted | api/user/user_assets.py | 已删除资产 |
+| 120 | User Assets | POST | /user_assets/{asset_id}/restore | restore_asset | api/user/user_assets.py | 恢复资产 |
+| 120a | User Assets | POST | /user_assets/{asset_id}/move | move_asset | api/user/user_assets.py | 移动到文件夹 (v3.33) |
+| 120b | User Assets | PATCH | /user_assets/{asset_id}/star | star_asset | api/user/user_assets.py | 切换收藏状态 (v3.33) |
+| 120c | User Assets | GET | /user_assets/folder/{folder_id} | get_assets_by_folder | api/user/user_assets.py | 获取文件夹内资产 (v3.33) |
+| 120d | User Assets | GET | /user_assets/starred | get_starred_assets | api/user/user_assets.py | 获取收藏资产 (v3.33) |
+| 121 | User Profile | GET | /user_profile/me | get_me | api/user/user_profile.py | 获取当前用户信息 |
+| 122 | User Profile | GET | /user_profile/history | get_history | api/user/user_profile.py | 获取操作历史 |
+| 123 | User Profile | GET | /user_profile/purchases | get_purchases | api/user/user_profile.py | 获取购买记录 |
+| 124 | User Profile | GET | /user_profile/notifications | get_notifications | api/user/user_profile.py | 获取通知列表 |
+| 125 | User Profile | POST | /user_profile/notifications/{id}/read | mark_notification_read | api/user/user_profile.py | 标记通知为已读 |
+| 126 | User Profile | POST | /user_profile/notifications/read-all | mark_all_read | api/user/user_profile.py | 标记所有通知为已读 |
+| 127 | User Profile | PUT | /user_profile/timezone | update_timezone | api/user/user_profile.py | 更新时区 |
+| 128 | Webhooks | POST | /webhooks/clerk | - | - | ❌ 已移除 (改用自建认证) |
+| 129 | Webhooks | POST | /webhooks/stripe | stripe_webhook | api/user/webhooks.py | Stripe Webhook处理 |
+| 130 | Folders | GET | /folders | list_folders | api/user/folders.py | 获取文件夹列表 (v3.33) |
+| 131 | Folders | POST | /folders | create_folder | api/user/folders.py | 创建文件夹 (v3.33) |
+| 132 | Folders | PATCH | /folders/{folder_id} | update_folder | api/user/folders.py | 更新文件夹 (v3.33) |
+| 133 | Folders | DELETE | /folders/{folder_id} | delete_folder | api/user/folders.py | 删除文件夹 (v3.33) |
+| 134 | Folders | POST | /folders/reorder | reorder_folders | api/user/folders.py | 重排序文件夹 (v3.33) |
+| 135 | Folders | GET | /folders/{folder_id} | get_folder | api/user/folders.py | 获取文件夹详情 (v3.33) |
 
 ---
 
