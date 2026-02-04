@@ -6,6 +6,11 @@
 
 ## 目录说明
 
+- `editor-system-design.md`：编辑器系统设计
+- `marketplace-system-design.md`：Marketplace 系统设计
+- `billing-system-design.md`：计费与积分系统设计
+- `support-system-design.md`：支持与反馈系统设计
+- `notifications-system-design.md`：通知系统设计
 - `onboarding-design.md`：新手引导系统设计
 - `theme-system-design.md`：主题系统设计
 
