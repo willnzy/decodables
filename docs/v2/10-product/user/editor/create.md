@@ -16,8 +16,8 @@
 
 ## 背景
 
-- 问题或机会: 待补充
-- 目标与非目标: 待补充
+- 问题或机会: 提供受控的编辑器入口，避免未登录调用 API
+- 目标与非目标: 目标是加载编辑器；非目标是营销入口页
 
 ## 设计约束（强制）
 
@@ -27,14 +27,20 @@
 
 ## 结论/规范/方案
 
-- 关键结论与约束: 待补充
-- 必须遵循的规则: 待补充
+- 关键结论与约束: AuthGate + Suspense + Skeleton
+- 必须遵循的规则: 未登录重定向 `/login?redirect=/create`
 
 ## 详细说明
 
-- 页面结构与关键区域: 待补充
-- 关键用户路径与状态: 待补充
-- PC/Mobile 差异: 待补充
+- 页面结构与关键区域:
+  - EditorAuthGate
+  - EditorSkeleton
+  - EditorContent
+- 关键用户路径与状态:
+  - auth 未完成显示 skeleton
+  - 未登录跳转登录
+  - 等待 userStore 初始化后渲染 EditorContent
+- PC/Mobile 差异: 由编辑器内部布局决定
 
 ## 影响范围
 

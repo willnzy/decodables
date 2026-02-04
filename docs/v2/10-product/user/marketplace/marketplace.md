@@ -16,8 +16,8 @@
 
 ## 背景
 
-- 问题或机会: 待补充
-- 目标与非目标: 待补充
+- 问题或机会: 提供可筛选的素材/模板市场入口
+- 目标与非目标: 目标是浏览/购买内容；非目标是发布流程
 
 ## 设计约束（强制）
 
@@ -27,14 +27,22 @@
 
 ## 结论/规范/方案
 
-- 关键结论与约束: 待补充
-- 必须遵循的规则: 待补充
+- 关键结论与约束: AuthGate + 用户数据初始化后渲染
+- 必须遵循的规则: 未登录重定向 `/login?redirect=/marketplace`
 
 ## 详细说明
 
-- 页面结构与关键区域: 待补充
-- 关键用户路径与状态: 待补充
-- PC/Mobile 差异: 待补充
+- 页面结构与关键区域:
+  - 顶部导航 + ContentGuidelines
+  - Tabs + 搜索 + FilterSidebar
+  - 列表/虚拟列表 + 详情预览
+  - 购买确认/举报弹窗
+- 关键用户路径与状态:
+  - filters 与 URL 同步（防抖搜索）
+  - 购买流程：确认 → executePurchase → 标记 is_owned
+  - 举报流程：ReportDialog 提交
+  - 排行榜 tab 使用 LeaderboardSection
+- PC/Mobile 差异: 移动端使用 MobileFilterSheet 与无限滚动
 
 ## 影响范围
 

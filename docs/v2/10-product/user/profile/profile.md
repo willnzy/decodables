@@ -16,8 +16,8 @@
 
 ## 背景
 
-- 问题或机会: 待补充
-- 目标与非目标: 待补充
+- 问题或机会: 提供移动端完整的账户/订阅/积分管理入口
+- 目标与非目标: 目标是移动端个人中心；非目标是桌面端设置页
 
 ## 设计约束（强制）
 
@@ -27,14 +27,22 @@
 
 ## 结论/规范/方案
 
-- 关键结论与约束: 待补充
-- 必须遵循的规则: 待补充
+- 关键结论与约束: 仅移动端展示；桌面端重定向 `/dashboard`
+- 必须遵循的规则: 未登录重定向 `/login?redirect=/profile`
 
 ## 详细说明
 
-- 页面结构与关键区域: 待补充
-- 关键用户路径与状态: 待补充
-- PC/Mobile 差异: 待补充
+- 页面结构与关键区域:
+  - ProfileHeader / UserIdCard
+  - CreditsCard / SubscriptionCard
+  - QuickActions + SignOut
+  - BottomNavbar + Bottom Sheets
+- 关键用户路径与状态:
+  - auth 未完成显示 Loading
+  - 读取 userStore 初始化（tier/credits）
+  - 购买积分与订阅管理跳转 Stripe
+  - checkout 回调 success/canceled 提示并清理参数
+- PC/Mobile 差异: 桌面端直接重定向到 `/dashboard`
 
 ## 影响范围
 
