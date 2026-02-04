@@ -1,9 +1,10 @@
 # Entitlement 系统审计检查清单
 
-> **版本**: v1.1
+> **版本**: v1.2
 > **日期**: 2026-02-04
 > **状态**: 审计标准 (已审核完善)
 > **适用范围**: 权限系统、订阅系统、积分系统的全面审计
+> **重要变更**: 积分系统采用二维模型 (source_type + expires_at)，扣费采用 FEFO 策略
 
 ---
 
@@ -86,7 +87,7 @@
 | 表名 | 检查重点 |
 |------|---------|
 | `profiles` | tier 字段 CHECK ('t1','t2','t3','t4'); credits_total/credits_debt 非负; trial 相关字段 |
-| `credit_pools` | source_type CHECK (7种); balance 非负; user_id + expires_at 索引支持 FEFO |
+| `credit_pools` | source_type CHECK (7种); balance 非负; user_id 索引; (user_id, expires_at) 复合索引支持 FEFO; source_id 可追溯 |
 | `subscriptions` | status CHECK; billing_interval CHECK; pause 相关字段 |
 | `user_feature_overrides` | (user_id, feature_key) UNIQUE; override_value CHECK; expires_at 索引 |
 | `group_feature_overrides` | (group_id, feature_key) UNIQUE; override_value CHECK; expires_at 索引 |
@@ -449,6 +450,9 @@ compensation → earning → purchase → bonus_campaign → bonus_referral → 
 | 5.5.8 | 积分余额实时更新 UI | - | - | □ |
 | 5.5.9 | 积分记录可查询 | □ | □ | □ |
 | 5.5.10 | 补偿积分正确发放 | □ | □ | - |
+| 5.5.11 | 退款回收顺序正确 (反向) | □ | □ | - |
+| 5.5.12 | credit_pools 多池管理正确 | □ | □ | - |
+| 5.5.13 | 即将过期积分提醒 (7天内) | - | □ | □ |
 
 ### 5.6 场景 S6: 试用期管理
 
@@ -699,6 +703,20 @@ Dashboard: 显示下次扣款日期
 | 6.11.3 | 数据保留策略透明 | 告知用户保留期限 |
 | 6.11.4 | 第三方数据共享说明 | Stripe/Clerk 等 |
 
+### 6.12 积分池管理（二维模型专项）
+
+> 参考 [15-credits-lifecycle.md](./15-credits-lifecycle.md) 积分完整生命周期
+
+| # | 检查项 | 说明 |
+|---|--------|------|
+| 6.12.1 | 积分池创建正确 | 每种来源创建独立池 |
+| 6.12.2 | 同来源多池支持 | 如多次活动赠送 |
+| 6.12.3 | 过期池自动清理 | 定时任务清除 balance=0 的过期池 |
+| 6.12.4 | 积分汇总计算正确 | `SELECT SUM(balance) FROM credit_pools WHERE user_id = ?` |
+| 6.12.5 | 按来源类型统计 API | 支持前端分类显示 |
+| 6.12.6 | 即将过期积分查询 API | 7 天内过期积分提醒 |
+| 6.12.7 | 积分池变更审计 | 每次扣费/增加有 transaction 记录 |
+
 ---
 
 ## 七、审计执行流程
@@ -799,10 +817,13 @@ Phase 5: 交叉验证
 ### 8.3 积分场景 Quick Check
 
 - [ ] 扣费策略 FEFO (先过期先扣 + 来源优先级) ✅
+- [ ] 退款回收顺序 (反向): compensation → earning → purchase → bonus_campaign → bonus_referral → bonus_signup → subscription ✅
 - [ ] 原子操作 (RPC) ✅
 - [ ] 余额不足拦截 ✅
 - [ ] 变动 toast ✅
 - [ ] 记录可查 ✅
+- [ ] 7 种来源类型支持完整 ✅
+- [ ] 即将过期积分提醒 ✅
 
 ### 8.4 前端 UI Quick Check
 
