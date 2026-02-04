@@ -762,8 +762,9 @@ CREDITS_PER_IMAGE = int(os.getenv("CREDITS_PER_IMAGE", "5"))
 TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "30"))
 
 # === 硬编码常量 (不可配置) ===
-VALID_TIERS = ["t1", "t2", "t3"]
-MEMBER_TIERS = ["t2", "t3"]
+# 引用 domains/identity/constants.py 中的定义
+VALID_TIERS = ["t1", "t2", "t3", "t4"]  # t4 为 Enterprise 预留
+MEMBER_TIERS = ["t2", "t3", "t4"]
 ```
 
 ### 3.6 API 响应格式
@@ -2121,8 +2122,8 @@ CREDITS_MONTHLY_T2 = 500
 CREDITS_MONTHLY_T3 = 1000
 MAX_LISTING_PRICE = 500
 SELLER_REVENUE_PERCENT = 90
-VALID_TIERS = ["t1", "t2", "t3"]
-MEMBER_TIERS = ["t2", "t3"]
+VALID_TIERS = ["t1", "t2", "t3", "t4"]  # t4 为 Enterprise 预留
+MEMBER_TIERS = ["t2", "t3", "t4"]
 TRIAL_DAYS = 30
 ```
 
