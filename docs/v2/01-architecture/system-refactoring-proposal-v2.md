@@ -35,8 +35,8 @@
 
 ## 影响范围
 
-- 相关模块: 待补充
-- 相关文档: 待补充
+- 相关模块: 系统分层与核心架构
+- 相关文档: `docs/v2/00-governance/information-architecture.md`、`docs/v2/01-architecture/frontend-architecture.md`
 
 ## 证据与验证
 
