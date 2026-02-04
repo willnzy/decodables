@@ -97,8 +97,8 @@ CREATE TABLE IF NOT EXISTS profiles (
     -- 包含: 注册日期时间(16位) + 毫秒(4位) + 用户序号(7位) + 随机数(3位)
     user_code TEXT UNIQUE NOT NULL,
 
-    -- 用户等级 (系统代码: t1/t2/t3, 显示名称可通过 system_configs 配置)
-    tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3')),
+    -- 用户等级 (系统代码: t1/t2/t3/t4, 显示名称可通过 system_configs 配置)
+    tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3', 't4')),
     tier_changed_at TIMESTAMPTZ,
 
     -- 积分余额 (核心字段!)

@@ -754,7 +754,7 @@ export function TrialExpiredModal({ isOpen, onClose, onUpgrade }: TrialExpiredMo
 
         <div className="space-y-4 py-4">
           <p className="text-slate-600">
-            您的 7 天免费试用已结束。感谢您的体验！
+            您的 {trialDays} 天免费试用已结束。感谢您的体验！
           </p>
 
           <div className="bg-slate-50 rounded-lg p-4 space-y-2">
@@ -805,7 +805,7 @@ export function TrialExpiredModal({ isOpen, onClose, onUpgrade }: TrialExpiredMo
 │  ⏰ 试用期已结束                                          [✕]   │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  您的 7 天免费试用已结束。感谢您的体验！                          │
+│  您的 {trialDays} 天免费试用已结束。感谢您的体验！                 │
 │                                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │ 升级后可以：                                              │   │

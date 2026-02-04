@@ -460,7 +460,7 @@ compensation → earning → purchase → bonus_campaign → bonus_referral → 
 ### 5.6 场景 S6: 试用期管理
 
 ```
-试用期: 仅 t1 用户，默认 7 天
+试用期: 仅 t1 用户，天数通过 `trial.default_days` 配置
 状态: isInTrial = 注册时间 + trial_days > 当前时间
 ```
 
@@ -811,6 +811,45 @@ Phase 5: 交叉验证
 - [ ] 试用期 Banner ✅
 - [ ] 升级 Modal ✅
 - [ ] 4 态覆盖 (loading/success/error/empty) ✅
+
+---
+
+## 九、代码问题待修复清单 (2026-02-04 审计发现)
+
+> 以下问题是审计过程中发现的代码与文档方案不一致之处，需要后续修复。
+
+### 9.1 高优先级 (P0)
+
+| # | 问题描述 | 文档方案 | 代码现状 | 修复文件 |
+|---|----------|----------|----------|----------|
+| 1 | **数据库 t4 约束缺失** | 支持 t1/t2/t3/t4 | CHECK 只有 t1/t2/t3 | ✅ 已修复 `01_core_business.sql:101` |
+
+### 9.2 中优先级 (P1)
+
+| # | 问题描述 | 文档方案 | 代码现状 | 修复文件 |
+|---|----------|----------|----------|----------|
+| 1 | **试用期常量未更新** | 可配置 (`trial.default_days`) | `DEFAULT_TRIAL_DURATION_DAYS = 30` 硬编码 | `constants.py:77` |
+| 2 | **OCR 成本不一致** | 从配置读取 | `SMART_SCAN: int = 10` 硬编码 | `billing/value_objects.py:152` |
+| 3 | **前端 useUserStore 注释** | 可配置天数 | 注释写死 "7-day trial period" | `lib/useUserStore.ts:247-250` |
+
+### 9.3 低优先级 (P2)
+
+| # | 问题描述 | 文档方案 | 代码现状 | 修复文件 |
+|---|----------|----------|----------|----------|
+| 1 | **api/user/tools.py 旧常量** | 从配置读取 | `OCR_COST = 5` 未使用但未删除 | `api/user/tools.py:52` |
+| 2 | **测试文件试用期常量** | 可配置 | 硬编码 `TRIAL_DAYS = 30` | `tests/business_rules/test_trial_period.py` 等 |
+
+### 9.4 修复指南
+
+**原则**: 所有可配置参数应从 `system_configs` 表读取，代码中的常量仅作为 fallback。
+
+**试用期天数**:
+- 权威来源: `system_configs.trial.default_days`
+- 代码 fallback: `DEFAULT_TRIAL_DURATION_DAYS` (应保守设置)
+
+**AI 成本**:
+- 权威来源: `system_configs.credits.cost.*`
+- 代码 fallback: `billing/value_objects.py` 中的常量
 
 ---
 

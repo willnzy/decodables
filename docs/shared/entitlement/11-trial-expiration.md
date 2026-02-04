@@ -175,7 +175,7 @@ function TrialExpiredModal({ isOpen, onClose }: { isOpen: boolean; onClose: () =
         试用期已结束
       </ModalHeader>
       <ModalBody>
-        <p>您的 7 天免费试用已结束。</p>
+        <p>您的 {trialDays} 天免费试用已结束。</p>
         <p className="mt-2">升级后可以：</p>
         <ul className="list-disc ml-4 mt-2">
           <li>继续编辑您的项目</li>
