@@ -276,9 +276,9 @@ async function handleWorkspaceDowngrade(userId: string, newTier: string) {
 
 | 原 Tier | 新 Tier | 原配额 | 新配额 | 处理方式 |
 |:-------:|:-------:|:-----:|:-----:|---------|
-| t3 | t2 | unlimited | 50 | 超额素材只读，可在项目中使用但不能编辑 |
+| t3 | t2 | unlimited | 0 | 所有自定义素材只读 (t2 不支持上传) |
 | t3 | t1 | unlimited | 0 | 所有自定义素材只读 |
-| t2 | t1 | 50 | 0 | 所有自定义素材只读 |
+| t2 | t1 | 0 | 0 | 无变化 (t2 已经不支持自定义素材) |
 
 **注意**: t1 试用期过期后 `max_custom_assets = 0`，但已上传的素材仍可在项目中使用
 
