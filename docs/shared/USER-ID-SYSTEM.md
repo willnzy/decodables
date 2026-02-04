@@ -13,8 +13,8 @@ Make Decodables 系统使用**双重用户标识符**机制，分别服务于不
 **用途**: 系统和数据库内部使用的唯一标识符
 
 **特征**:
-- **格式**: Clerk 生成的标识符 (例如: `user_2abc3def4ghi5jkl`)
-- **来源**: Clerk 认证系统自动生成
+- **格式**: UUID v4 (例如: `550e8400-e29b-41d4-a716-446655440000`)
+- **来源**: 用户注册时系统自动生成
 - **唯一性**: 全局唯一，永久不变
 - **可读性**: 机器友好，人类不友好
 
@@ -27,7 +27,7 @@ Make Decodables 系统使用**双重用户标识符**机制，分别服务于不
 **示例**:
 ```python
 # 获取用户资料
-user = await users_repo.get_profile(user_id="user_2abc3def4ghi5jkl")
+user = await users_repo.get_profile(user_id="550e8400-e29b-41d4-a716-446655440000")
 
 # 数据库查询
 supabase.table("projects").select("*").eq("user_id", user_id).execute()

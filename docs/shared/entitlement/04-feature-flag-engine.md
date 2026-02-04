@@ -1222,7 +1222,7 @@ export interface FeatureVariants {
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuthStore } from '@shared/auth/store';
 import { EvaluationContext, EvaluationResult, FeatureFlags, FeatureVariants } from './types';
 
 interface FeatureFlagContextType {

@@ -437,7 +437,7 @@ function useQuotaGuard(type: QuotaType) {
 1. GlobalProviders mount
    → configStore.fetchAllConfigs() (系统配置，无需登录)
 
-2. UserStateHandler (Clerk ready)
+2. UserStateHandler (Auth ready)
    → GET /user/me → useUserStore.setUser()
    → entitlementStore.fetchEntitlements() (依赖 JWT)
 
@@ -746,7 +746,7 @@ INSERT INTO entitlement_configs (tier, feature_key, value_type, value, trial_val
 
 | 层级 | 职责 | 判断依据 | 数据来源 |
 |------|------|---------|---------|
-| **认证层** | 区分游客/登录用户 | `isSignedIn` | Clerk JWT |
+| **认证层** | 区分游客/登录用户 | `isSignedIn` | 自建 JWT (HS256) |
 | **授权层** | 区分订阅等级 | `tier` (t1/t2/t3) | 数据库 `profiles` |
 
 ```
