@@ -3,7 +3,7 @@
  > 后台数据分析能力的系统设计与边界说明。
  
  **状态**: draft  
- **版本**: 0.1.0  
+**版本**: 0.2.0  
  **版本日期**: 2026-02-04  
  **最后复核**: 2026-02-04  
  **负责人**: Docs Working Group  
@@ -48,6 +48,34 @@
 - 统一分页：`offset` + `limit`
 - 日期格式与 period/group_by 校验
 - 管理员权限与接口限流
+
+## 状态与类型
+
+- Period：`week` / `month` / `quarter` / `year`
+- GroupBy：`hour` / `day` / `week` / `month`
+- 订阅事件：`upgrades` / `downgrades` / `cancellations` / `refunds`
+- 导出类型：`pdf` / `zip` / `print` / `preview`
+- 用户分布维度：`country` / `browser` / `os` / `device_type` / `language` / `timezone`
+
+## 数据结构
+
+- DashboardStats：`totalUsers` / `totalRevenue` / `totalProjects` / `creditsUsed`
+- UserGrowth：`new_users` / `total_users`
+- Revenue：`subscription_revenue` / `credits_revenue`
+- ConversionFunnel：`stage` / `count` / `conversion_rate`
+- MetricsDaily：`signups` / `active_users` / `projects_created` / `revenue`
+- Retention：`day_1_retention` / `day_7_retention` / `cohorts`
+
+## 前端交互要点
+
+- Stats/Metrics/Events/AI 四个面板分区
+- 维度筛选与日期范围联动
+- 聚合任务可手动触发并回看结果
+
+## 实现边界（现状）
+
+- 部分统计维度为前端展示字段，后端聚合口径需以 API 返回为准
+- AI 洞察与推荐接口仅提供摘要，详细分析需二次请求
 
 ## 接口清单（Admin）
 
@@ -105,3 +133,4 @@
 | 日期 | 版本 | 变更内容 | 负责人 |
 |------|------|----------|--------|
 | 2026-02-04 | 0.1.0 | 初始创建 | Docs Working Group |
+| 2026-02-04 | 0.2.0 | 补充 Analytics 系统设计细节 | Docs Working Group |
