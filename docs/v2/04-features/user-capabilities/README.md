@@ -9,6 +9,12 @@
 - `workspace-system-design.md`：Workspace 系统设计
 - `content-organization-design.md`：内容组织系统设计
 - `generation-system-design.md`：生成与导出系统设计
+- `assets-system-design.md`：资产与素材系统设计
+- `templates-system-design.md`：模板系统设计
+- `tools-system-design.md`：工具系统设计
+- `analytics-system-design.md`：用户分析系统设计
+- `referrals-system-design.md`：推荐与返利系统设计
+- `resources-system-design.md`：资源与系统素材设计
 - `editor-system-design.md`：编辑器系统设计
 - `marketplace-system-design.md`：Marketplace 系统设计
 - `billing-system-design.md`：计费与积分系统设计
