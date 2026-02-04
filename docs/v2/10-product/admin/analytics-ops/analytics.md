@@ -16,8 +16,8 @@
 
 ## 背景
 
-- 问题或机会: 待补充
-- 目标与非目标: 待补充
+- 问题或机会: 需要集中查看运营统计与 AI 使用情况
+- 目标与非目标: 目标是分析面板；非目标是配置管理
 
 ## 设计约束（强制）
 
@@ -27,14 +27,19 @@
 
 ## 结论/规范/方案
 
-- 关键结论与约束: 待补充
-- 必须遵循的规则: 待补充
+- 关键结论与约束: panel 通过 `?panel=` 驱动
+- 必须遵循的规则: 默认 panel 为 stats
 
 ## 详细说明
 
-- 页面结构与关键区域: 待补充
-- 管理路径与状态: 待补充
-- PC/Mobile 差异: 待补充
+- 页面结构与关键区域:
+  - Tabs（stats/metrics/events/ai）
+  - StatsDashboard / MetricsPanel / EventsPanel
+  - AIInsightsPanel + AIUsagePanel
+- 管理路径与状态:
+  - panel 切换更新 URL
+  - Suspense 显示加载态
+- PC/Mobile 差异: 无特定差异
 
 ## 影响范围
 

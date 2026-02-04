@@ -16,8 +16,8 @@
 
 ## 背景
 
-- 问题或机会: 待补充
-- 目标与非目标: 待补充
+- 问题或机会: 需要集中管理系统配置、权限与开关
+- 目标与非目标: 目标是配置管理；非目标是业务运营分析
 
 ## 设计约束（强制）
 
@@ -27,14 +27,21 @@
 
 ## 结论/规范/方案
 
-- 关键结论与约束: 待补充
-- 必须遵循的规则: 待补充
+- 关键结论与约束: panel 通过 `?panel=` 驱动
+- 必须遵循的规则: 切换 panel 清理筛选参数
 
 ## 详细说明
 
-- 页面结构与关键区域: 待补充
-- 管理路径与状态: 待补充
-- PC/Mobile 差异: 待补充
+- 页面结构与关键区域:
+  - Tabs（system/tiers/flags）
+  - ConfigManagementPanel
+  - TierPermissionsPanel
+  - FeatureFlagsPanel
+- 管理路径与状态:
+  - panel 切换更新 URL
+  - 进入时默认 system
+  - Suspense 显示加载态
+- PC/Mobile 差异: 无特定差异
 
 ## 影响范围
 
