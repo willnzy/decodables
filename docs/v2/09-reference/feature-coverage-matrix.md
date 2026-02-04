@@ -353,6 +353,12 @@
 | `/notifications` | user-capabilities/notifications |
 | `/marketplace` | user-capabilities/marketplace + assets + reporting |
 | `/profile` | user-capabilities/account + billing |
+| `/admin` | admin-capabilities/admin-console |
+| `/admin/users` | admin-capabilities/user-ops |
+| `/admin/moderation` | admin-capabilities/moderation |
+| `/admin/marketing` | admin-capabilities/marketing-ops |
+| `/admin/articles` | admin-capabilities/content-ops |
+| `/admin/themes` | admin-capabilities/content-ops |
 | `/admin/configs` | admin-capabilities/config-ops |
 | `/admin/analytics` | admin-capabilities/analytics-ops |
 | `/admin/content` | admin-capabilities/content-ops |
