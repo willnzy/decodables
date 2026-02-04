@@ -6,6 +6,11 @@
 
 ## 目录说明
 
+- `user-ops-design.md`：用户运营系统设计
+- `moderation-system-design.md`：审核与举报系统设计
+- `marketing-ops-design.md`：营销运营系统设计
+- `config-ops-design.md`：配置与权限系统设计
+- `system-ops-design.md`：系统运维能力设计
 - `analytics-system-design.md`：分析系统设计
 - `articles-system-design.md`：文章系统设计
 - `asset-category-design.md`：素材分类系统设计
