@@ -20,6 +20,12 @@
  - 提供唯一索引入口，支持双端一致性追踪
  - 避免重复、遗漏、冲突
  
+## 1.1 设计约束（强制）
+
+- 禁止照搬旧文档结构或原文段落
+- 必须以新结构重组表达，仅引用证据来源
+- 每条记录必须指向唯一主文档
+
  ## 2. 同步规则
  
  - shared 文档必须在两端保持同路径与同内容
@@ -41,4 +47,8 @@
  
  ## 5. 索引清单
  
- > 由覆盖矩阵驱动，后续在此列出最终清单。
+> 由覆盖矩阵驱动，所有 shared 文档必须在此登记。
+
+| shared_key | v2_path | status | owner | last_review | source |
+| --- | --- | --- | --- | --- | --- |
+| `shared-docs-registry` | `docs/v2/09-reference/shared-docs-registry.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/README.md` |
