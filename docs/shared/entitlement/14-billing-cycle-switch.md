@@ -178,7 +178,7 @@
 ```sql
 CREATE TABLE IF NOT EXISTS billing_cycle_changes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     from_cycle VARCHAR(10) NOT NULL, -- monthly, yearly
     to_cycle VARCHAR(10) NOT NULL,
     requested_at TIMESTAMPTZ DEFAULT NOW(),

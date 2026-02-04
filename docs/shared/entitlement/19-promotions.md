@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS promotions (
 CREATE TABLE IF NOT EXISTS promotion_usages (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     promotion_id UUID NOT NULL REFERENCES promotions(id),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     used_at TIMESTAMPTZ DEFAULT NOW(),
     order_id UUID, -- 关联订单
     discount_amount DECIMAL(10,2) NOT NULL

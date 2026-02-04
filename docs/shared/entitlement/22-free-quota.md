@@ -134,7 +134,7 @@ async def reset_quotas():
 ```sql
 CREATE TABLE IF NOT EXISTS user_quotas (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     feature VARCHAR(50) NOT NULL, -- ai_generate, smart_scan, pdf_export
     total INT NOT NULL DEFAULT 0,
     used INT NOT NULL DEFAULT 0,

@@ -39,7 +39,7 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
 ```sql
 -- 用户通知偏好
 CREATE TABLE IF NOT EXISTS user_notification_preferences (
-    user_id TEXT PRIMARY KEY REFERENCES profiles(user_id),
+    user_id UUID PRIMARY KEY REFERENCES profiles(id),
     renewal_email BOOLEAN DEFAULT TRUE,
     renewal_push BOOLEAN DEFAULT TRUE,
     marketing_email BOOLEAN DEFAULT TRUE,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS user_notification_preferences (
 -- 通知发送记录
 CREATE TABLE IF NOT EXISTS notification_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     notification_type TEXT NOT NULL,      -- 'renewal_reminder' | 'payment_failed' | 'trial_ending'
     channel TEXT NOT NULL,                -- 'email' | 'push' | 'in_app'
     template_id TEXT,

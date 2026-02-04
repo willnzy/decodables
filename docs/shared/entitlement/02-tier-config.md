@@ -189,12 +189,12 @@ INSERT INTO system_configs (key, value, value_type, config_group) VALUES
 -- 用户功能覆盖表
 CREATE TABLE user_feature_overrides (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
   feature_key TEXT NOT NULL,           -- 功能 Key, 如 'smart_scan', 'ai_features'
   override_value TEXT NOT NULL,        -- 覆盖值: 'true' | 'false' | 'trial'
   reason TEXT,                         -- 覆盖原因 (运营记录)
   expires_at TIMESTAMPTZ,              -- 过期时间 (可选, NULL=永久)
-  created_by TEXT,                     -- 操作人 (Admin user_id)
+  created_by UUID,                     -- 操作人 (Admin user_id)
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(user_id, feature_key)

@@ -181,7 +181,7 @@ async def handle_webhook(event: StripeEvent):
 ```sql
 CREATE TABLE IF NOT EXISTS refunds (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     transaction_id UUID NOT NULL, -- 原交易ID
     stripe_refund_id TEXT,
     amount DECIMAL(10,2) NOT NULL,

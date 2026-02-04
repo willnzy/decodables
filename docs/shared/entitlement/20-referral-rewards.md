@@ -160,7 +160,7 @@ CREATE TABLE IF NOT EXISTS referrals (
 
 -- 用户邀请码表
 CREATE TABLE IF NOT EXISTS referral_codes (
-    user_id TEXT PRIMARY KEY REFERENCES profiles(user_id),
+    user_id UUID PRIMARY KEY REFERENCES profiles(id),
     code VARCHAR(20) NOT NULL UNIQUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

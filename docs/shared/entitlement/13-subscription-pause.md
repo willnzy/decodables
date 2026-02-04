@@ -168,7 +168,7 @@ ALTER TABLE profiles ADD COLUMN IF NOT EXISTS
 ```sql
 CREATE TABLE IF NOT EXISTS subscription_pause_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     pause_started_at TIMESTAMPTZ NOT NULL,
     pause_ended_at TIMESTAMPTZ,
     pause_duration_months INT NOT NULL,
@@ -480,7 +480,7 @@ ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS
 -- 暂停历史记录表
 CREATE TABLE IF NOT EXISTS subscription_pause_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     subscription_id TEXT NOT NULL,
     pause_start_at TIMESTAMPTZ NOT NULL,
     pause_end_at TIMESTAMPTZ,            -- 实际结束时间

@@ -122,13 +122,13 @@
 ```sql
 CREATE TABLE IF NOT EXISTS education_verifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     verification_type VARCHAR(20) NOT NULL, -- edu_email, student_id, teacher_id, institution
     verification_data JSONB, -- 存储认证信息
     status VARCHAR(20) DEFAULT 'pending', -- pending, approved, rejected, expired
     verified_at TIMESTAMPTZ,
     expires_at TIMESTAMPTZ,
-    reviewed_by TEXT, -- 审核人 (人工审核时)
+    reviewed_by UUID, -- 审核人 (人工审核时)
     review_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

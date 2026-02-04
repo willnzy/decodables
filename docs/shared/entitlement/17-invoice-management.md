@@ -134,7 +134,7 @@
 ```sql
 CREATE TABLE IF NOT EXISTS billing_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id),
+    user_id UUID NOT NULL REFERENCES profiles(id),
     transaction_id UUID REFERENCES transactions(id),
     document_type VARCHAR(20) NOT NULL, -- receipt, invoice, credit_note
     document_number VARCHAR(50) NOT NULL UNIQUE,

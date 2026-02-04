@@ -62,8 +62,8 @@ CREATE TABLE user_groups (
 CREATE TABLE user_group_members (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
-  user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
-  added_by TEXT NOT NULL,                  -- 添加人 (Admin user_id)
+  user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+  added_by UUID NOT NULL,                  -- 添加人 (Admin user_id)
   added_at TIMESTAMPTZ DEFAULT NOW(),
   expires_at TIMESTAMPTZ,                  -- 成员过期时间 (可选)
   UNIQUE(group_id, user_id)
