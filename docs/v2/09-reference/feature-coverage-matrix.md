@@ -503,19 +503,19 @@
 | `decodables/docs/shared/feature-flag-engine.md` | `decodables/docs/v2/02-standards/feature-flag/feature-flag-engine.md` | needs-review |
 | `decodables/docs/shared/message-logging-standard.md` | `decodables/docs/v2/02-standards/logging-standard.md` | needs-review |
 | `decodables/docs/shared/project-implementation-plan.md` | `decodables/docs/v2/00-governance/project-implementation-plan.md` | needs-review |
-| `decodables/docs/shared/system-refactoring-proposal-v2.md` | `decodables/docs/v2/01-architecture/system-refactoring-proposal-v2.md` | needs-review |
-| `decodables/docs/shared/self-hosted-auth-design.md` | `decodables/docs/v2/01-architecture/self-hosted-auth-design.md` | needs-review |
+| `decodables/docs/shared/system-refactoring-proposal-v2.md` | `decodables/docs/v2/01-architecture/system-refactoring-proposal-v2.md` | done |
+| `decodables/docs/shared/self-hosted-auth-design.md` | `decodables/docs/v2/01-architecture/self-hosted-auth-design.md` | done |
 | `decodables/docs/shared/v3-refactoring-completion-report.md` | `decodables/docs/v2/00-governance/v3-refactoring-completion-report.md` | needs-review |
-| `decodables/docs/main/api-reference.md` | `decodables/docs/v2/05-api/api-reference.md` | needs-review |
-| `decodables/docs/main/architecture-proposal.md` | `decodables/docs/v2/01-architecture/architecture-proposal.md` | needs-review |
+| `decodables/docs/main/api-reference.md` | `decodables/docs/v2/05-api/api-reference.md` | done |
+| `decodables/docs/main/architecture-proposal.md` | `decodables/docs/v2/01-architecture/architecture-proposal.md` | done |
 | `decodables/docs/main/backend-architecture.md` | `decodables/docs/v2/01-architecture/backend-architecture.md` | done |
 | `decodables/docs/main/backend-business-logic.md` | `decodables/docs/v2/03-business/backend-business-logic.md` | done |
-| `decodables/docs/main/codebase-health-matrix.md` | `decodables/docs/v2/00-governance/codebase-health-matrix.md` | needs-review |
+| `decodables/docs/main/codebase-health-matrix.md` | `decodables/docs/v2/00-governance/codebase-health-matrix.md` | done |
 | `decodables/docs/main/database-guide.md` | `decodables/docs/v2/02-standards/database-guide.md` | done |
-| `decodables/docs/main/deployment-scaling.md` | `decodables/docs/v2/06-operations/deployment-scaling.md` | needs-review |
-| `decodables/docs/main/knowledge-base.md` | `decodables/docs/v2/09-reference/knowledge-base.md` | needs-review |
+| `decodables/docs/main/deployment-scaling.md` | `decodables/docs/v2/06-operations/deployment-scaling.md` | done |
+| `decodables/docs/main/knowledge-base.md` | `decodables/docs/v2/09-reference/knowledge-base.md` | done |
 | `decodables/docs/main/naming-conventions.md` | `decodables/docs/v2/00-governance/naming-conventions.md` | done |
-| `decodables/docs/main/testing-guide.md` | `decodables/docs/v2/02-standards/testing-guide.md` | needs-review |
+| `decodables/docs/main/testing-guide.md` | `decodables/docs/v2/02-standards/testing-guide.md` | done |
 | `decodables/docs/main/README.md` | `decodables/docs/v2/README.md` | done |
 
 ## 7. 缺口记录
@@ -524,4 +524,4 @@
 |--------|----------|----------|
 | `decodables-fe/docs/shared/` 与 `decodables/docs/shared/` 未映射 | 旧文档索引 | 已建立 shared 映射清单（完成） |
 | `user-capabilities/*` 对应 v2 功能文档未全量建立 | 覆盖矩阵 | 已按能力树补齐（完成） |
-| `admin-capabilities/*` 对应 v2 功能文档未全量建立 | 覆盖矩阵 | 按能力树补齐文档 |
+| `admin-capabilities/*` 对应 v2 功能文档未全量建立 | 覆盖矩阵 | 已按能力树补齐（完成） |

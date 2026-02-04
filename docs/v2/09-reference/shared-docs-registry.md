@@ -52,15 +52,15 @@
 | shared_key | v2_path | status | owner | last_review | source |
 | --- | --- | --- | --- | --- | --- |
 | `shared-docs-registry` | `docs/v2/09-reference/shared-docs-registry.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/README.md` |
-| `admin-api-review` | `docs/v2/05-api/admin-api-review.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/admin-api-review.md` |
-| `user-api-review` | `docs/v2/05-api/user-api-review.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/user-api-review.md` |
-| `analytics-system-design` | `docs/v2/04-features/admin-capabilities/analytics-system-design.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/analytics-system-design.md` |
-| `articles-system-design` | `docs/v2/04-features/admin-capabilities/articles-system-design.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/articles-system-design.md` |
-| `asset-category-design` | `docs/v2/04-features/admin-capabilities/asset-category-design.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/asset-category-design.md` |
-| `static-pages-cms-design` | `docs/v2/04-features/admin-capabilities/static-pages-cms-design.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/static-pages-cms-design.md` |
-| `onboarding-design` | `docs/v2/04-features/user-capabilities/onboarding-design.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/onboarding-design.md` |
-| `theme-system-design` | `docs/v2/04-features/user-capabilities/theme-system-design.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/theme-system-design.md` |
-| `canvas-data-schema` | `docs/v2/03-business/canvas-data-schema.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/canvas-data-schema.md` |
+| `admin-api-review` | `docs/v2/05-api/admin-api-review.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/admin-api-review.md` |
+| `user-api-review` | `docs/v2/05-api/user-api-review.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/user-api-review.md` |
+| `analytics-system-design` | `docs/v2/04-features/admin-capabilities/analytics-system-design.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/analytics-system-design.md` |
+| `articles-system-design` | `docs/v2/04-features/admin-capabilities/articles-system-design.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/articles-system-design.md` |
+| `asset-category-design` | `docs/v2/04-features/admin-capabilities/asset-category-design.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/asset-category-design.md` |
+| `static-pages-cms-design` | `docs/v2/04-features/admin-capabilities/static-pages-cms-design.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/static-pages-cms-design.md` |
+| `onboarding-design` | `docs/v2/04-features/user-capabilities/onboarding-design.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/onboarding-design.md` |
+| `theme-system-design` | `docs/v2/04-features/user-capabilities/theme-system-design.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/theme-system-design.md` |
+| `canvas-data-schema` | `docs/v2/03-business/canvas-data-schema.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/canvas-data-schema.md` |
 | `pricing-system-design` | `docs/v2/03-business/pricing-system.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/pricing-system-design.md` |
 | `tier-naming-system` | `docs/v2/03-business/tier-naming-system.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/tier-naming-system.md` |
 | `tier-permissions` | `docs/v2/03-business/entitlement/permission-matrix.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/tier-permissions.md` |
@@ -110,6 +110,6 @@
 | `feature-flag-engine` | `docs/v2/02-standards/feature-flag/feature-flag-engine.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/feature-flag-engine.md` |
 | `message-logging-standard` | `docs/v2/02-standards/logging-standard.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/message-logging-standard.md` |
 | `project-implementation-plan` | `docs/v2/00-governance/project-implementation-plan.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/project-implementation-plan.md` |
-| `system-refactoring-proposal-v2` | `docs/v2/01-architecture/system-refactoring-proposal-v2.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/system-refactoring-proposal-v2.md` |
-| `self-hosted-auth-design` | `docs/v2/01-architecture/self-hosted-auth-design.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/self-hosted-auth-design.md` |
+| `system-refactoring-proposal-v2` | `docs/v2/01-architecture/system-refactoring-proposal-v2.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/system-refactoring-proposal-v2.md` |
+| `self-hosted-auth-design` | `docs/v2/01-architecture/self-hosted-auth-design.md` | done | Docs Working Group | 2026-02-04 | `docs/shared/self-hosted-auth-design.md` |
 | `v3-refactoring-completion-report` | `docs/v2/00-governance/v3-refactoring-completion-report.md` | needs-review | Docs Working Group | 2026-02-04 | `docs/shared/v3-refactoring-completion-report.md` |
