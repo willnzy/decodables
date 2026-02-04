@@ -1,9 +1,10 @@
 # 订阅暂停
 
-> **版本**: v2.0
+> **版本**: v2.1
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **参考**: Spotify / Netflix 暂停模式
+> **实现状态**: 🔴 功能完全缺失
 
 ---
 
@@ -492,6 +493,54 @@ CREATE TABLE IF NOT EXISTS subscription_pause_history (
 
 CREATE INDEX idx_pause_history_user ON subscription_pause_history(user_id);
 ```
+
+---
+
+## 十二、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 订阅暂停功能完全缺失，以下内容已设计但尚未实现
+
+### 12.1 数据库层 (🟡 P1)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **扩展 `profiles` 表** | 添加 `subscription_status`, `pause_started_at`, `pause_ends_at`, `pause_count_this_year` | 🟡 P1 |
+| 2 | **创建 `subscription_pause_history` 表** | 暂停历史记录 (参见 §11.2) | 🟡 P1 |
+| 3 | **创建 `pause_subscription` RPC** | 原子暂停操作 | 🟡 P1 |
+| 4 | **创建 `resume_subscription` RPC** | 原子恢复操作 | 🟡 P1 |
+
+### 12.2 后端逻辑层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `SubscriptionPauseService` 实现 | 完整服务 (参见 §8.1) |
+| 2 | `_validate_pause_eligibility()` | 暂停资格验证 |
+| 3 | Stripe `subscription_schedule` 集成 | 暂停/恢复与 Stripe 同步 |
+| 4 | 暂停结束自动恢复任务 | 定时任务调度 |
+
+### 12.3 API 层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `POST /api/v1/subscriptions/pause` | 暂停订阅 |
+| 2 | `POST /api/v1/subscriptions/resume` | 恢复订阅 |
+| 3 | `GET /api/v1/subscriptions/pause-status` | 查询暂停状态 |
+
+### 12.4 前端组件 (🟢 P2)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `PauseSubscriptionModal` | 暂停确认弹窗 (参见 §10.1) |
+| 2 | `PausedStatusBanner` | 暂停状态 Banner (参见 §10.2) |
+| 3 | 设置页暂停/恢复入口 | 账户设置 → 订阅管理 |
+
+### 12.5 通知系统 (🟢 P2)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | 暂停确认邮件 | 暂停成功通知 |
+| 2 | 暂停期提醒邮件 | 50%、恢复前 7 天、恢复前 1 天 |
+| 3 | 恢复确认邮件 | 恢复成功通知 |
 
 ---
 

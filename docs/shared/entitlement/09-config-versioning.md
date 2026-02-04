@@ -2,9 +2,20 @@
 
 > 权限系统配置的快照与回滚机制
 
-**版本**: v1.0
+**版本**: v1.1
 **创建日期**: 2026-02-04
 **来源**: 基于 03-system-design.md 配置管理定义
+**更新**: 修正 feature_flags 字段名与 04-feature-flag-engine.md 保持一致
+
+---
+
+## 相关文档
+
+| 文档 | 说明 |
+|------|------|
+| [README.md](./README.md) | 文档导航索引 |
+| [03-system-design.md](./03-system-design.md) | 系统架构总览 |
+| [04-feature-flag-engine.md](./04-feature-flag-engine.md) | Feature Flag 评估引擎 |
 
 ---
 
@@ -105,7 +116,7 @@ class ConfigSnapshotService:
 
         if snapshot_type in ['feature_flags', 'full']:
             feature_flags = await db.fetch_all("""
-                SELECT * FROM feature_flags WHERE is_enabled = true
+                SELECT * FROM feature_flags WHERE enabled = true AND archived = false
             """)
             snapshot_data['feature_flags'] = [dict(r) for r in feature_flags]
 
@@ -177,25 +188,25 @@ class ConfigSnapshotService:
             if 'feature_flags' in snapshot_data:
                 # 先禁用所有当前 flags
                 await db.execute("""
-                    UPDATE feature_flags SET is_enabled = false, updated_at = NOW()
+                    UPDATE feature_flags SET enabled = false, updated_at = NOW()
                 """)
 
                 # 恢复快照中的 flags
                 for flag in snapshot_data['feature_flags']:
-                    if partial_keys and flag['flag_key'] not in partial_keys:
+                    if partial_keys and flag['key'] not in partial_keys:
                         continue
 
                     await db.execute("""
-                        INSERT INTO feature_flags (flag_key, flag_name, is_enabled, rollout_percentage, allowed_tiers)
+                        INSERT INTO feature_flags (key, name, enabled, rollout_percentage, allowed_tiers)
                         VALUES ($1, $2, $3, $4, $5)
-                        ON CONFLICT (flag_key) DO UPDATE SET
-                            is_enabled = EXCLUDED.is_enabled,
+                        ON CONFLICT (key) DO UPDATE SET
+                            enabled = EXCLUDED.enabled,
                             rollout_percentage = EXCLUDED.rollout_percentage,
                             allowed_tiers = EXCLUDED.allowed_tiers,
                             updated_at = NOW()
-                    """, flag['flag_key'], flag['flag_name'], flag['is_enabled'],
+                    """, flag['key'], flag['name'], flag['enabled'],
                         flag['rollout_percentage'], flag['allowed_tiers'])
-                    affected_keys.append(f"flag:{flag['flag_key']}")
+                    affected_keys.append(f"flag:{flag['key']}")
 
             # 标记快照为当前生效
             await db.execute("""

@@ -1,7 +1,22 @@
 # 订阅续期提醒
 
+> **版本**: v1.1
+> **日期**: 2026-02-04
 > **优先级**: P0 (核心功能)
 > **参考**: 所有 SaaS 产品
+
+---
+
+## 相关文档
+
+| 文档 | 说明 |
+|------|------|
+| [README.md](./README.md) | 文档导航索引 |
+| [02-tier-config.md](./02-tier-config.md) | Tier 配置 |
+| [14-billing-cycle-switch.md](./14-billing-cycle-switch.md) | 计费周期切换 |
+| [26-audit-checklist.md](./26-audit-checklist.md) | 审计检查清单 S12 场景 |
+
+---
 
 ## 概述
 
@@ -11,12 +26,25 @@
 
 ## 1. 提醒规则
 
-| 时间点 | 渠道 | 内容 |
-|--------|------|------|
-| 续期前 7 天 | 邮件 | 温和提醒，显示续期日期和金额 |
-| 续期前 3 天 | 邮件 + 应用内 | 提醒检查支付方式 |
-| 续期前 1 天 | 邮件 + 应用内 + Push | 最后提醒 |
-| 续期当天 | 应用内 | 显示扣费成功/失败状态 |
+### 1.1 年付订阅提醒
+
+| 时间点 | 渠道 | 内容 | 配置 key |
+|--------|------|------|----------|
+| 续期前 **30 天** | 邮件 | 年度续期提前通知 | `renewal.yearly_30day` |
+| 续期前 **7 天** | 邮件 + 应用内 | 温和提醒，显示续期日期和金额 | `renewal.yearly_7day` |
+| 续期前 **1 天** | 邮件 + 应用内 + Push | 最后提醒 | `renewal.yearly_1day` |
+| 续期当天 | 应用内 | 显示扣费成功/失败状态 | - |
+
+### 1.2 月付订阅提醒
+
+| 时间点 | 渠道 | 内容 | 配置 key |
+|--------|------|------|----------|
+| 续期前 **7 天** | 邮件 | 温和提醒，显示续期日期和金额 | `renewal.monthly_7day` |
+| 续期前 **3 天** | 邮件 + 应用内 | 提醒检查支付方式 | `renewal.monthly_3day` |
+| 续期前 **1 天** | 邮件 + 应用内 + Push | 最后提醒 | `renewal.monthly_1day` |
+| 续期当天 | 应用内 | 显示扣费成功/失败状态 | - |
+
+> **注意**: 年付订阅因金额较大，增加 30 天提前通知，符合 [26-audit-checklist.md](./26-audit-checklist.md) S12 场景要求。
 
 ---
 
@@ -24,7 +52,11 @@
 
 ```sql
 INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
-('renewal.reminder_days', '[7, 3, 1]', 'json', 'subscription', '续期提醒天数数组'),
+-- 年付提醒配置
+('renewal.yearly_reminder_days', '[30, 7, 1]', 'json', 'subscription', '年付续期提醒天数数组'),
+-- 月付提醒配置
+('renewal.monthly_reminder_days', '[7, 3, 1]', 'json', 'subscription', '月付续期提醒天数数组'),
+-- 通用配置
 ('renewal.email_enabled', 'true', 'boolean', 'subscription', '是否发送邮件提醒'),
 ('renewal.push_enabled', 'true', 'boolean', 'subscription', '是否发送推送提醒'),
 ('renewal.allow_user_disable', 'true', 'boolean', 'subscription', '用户是否可关闭提醒');
@@ -81,9 +113,15 @@ class RenewalReminderService:
     async def send_renewal_reminders(self):
         """定时任务: 发送续期提醒"""
 
-        reminder_days = await get_config('renewal.reminder_days') or [7, 3, 1]
+        # 根据订阅类型获取不同提醒配置
+        # 年付: [30, 7, 1]  月付: [7, 3, 1]
+        yearly_reminder_days = await get_config('renewal.yearly_reminder_days') or [30, 7, 1]
+        monthly_reminder_days = await get_config('renewal.monthly_reminder_days') or [7, 3, 1]
 
-        for days in reminder_days:
+        # 合并所有需要检查的天数
+        all_reminder_days = list(set(yearly_reminder_days + monthly_reminder_days))
+
+        for days in all_reminder_days:
             target_date = datetime.now() + timedelta(days=days)
 
             # 查找即将续期的订阅
@@ -118,7 +156,9 @@ class RenewalReminderService:
     async def _send_email_reminder(self, subscription: Dict, days_until: int):
         """发送邮件提醒"""
 
+        # 年付 30/7/1 天模板，月付 7/3/1 天模板
         template = {
+            30: 'renewal_reminder_30days',  # 年付专用
             7: 'renewal_reminder_7days',
             3: 'renewal_reminder_3days',
             1: 'renewal_reminder_1day'
@@ -187,6 +227,7 @@ class RenewalReminderService:
 
 ---
 
-**文档版本**: v1.0
+**文档版本**: v1.1
 **创建日期**: 2026-02-04
 **来源**: 权益矩阵文档 第九章 9.4 节
+**更新**: v1.1 - 补充年付 30 天提醒，符合 S12 场景要求

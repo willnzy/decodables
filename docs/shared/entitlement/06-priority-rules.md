@@ -10,11 +10,15 @@
 
 ## 相关文档
 
-- [01-permission-matrix.md](./01-permission-matrix.md) - 功能权限矩阵 (**唯一数据源**)
-- [02-tier-config.md](./02-tier-config.md) - Tier JSON 配置
-- [03-system-design.md](./03-system-design.md) - 系统架构总览
-- [04-feature-flag-engine.md](./04-feature-flag-engine.md) - Feature Flag 评估引擎
-- [05-ui-spec.md](./05-ui-spec.md) - UI 交互规范
+| 文档 | 说明 |
+|------|------|
+| [README.md](./README.md) | 文档导航索引 |
+| [01-permission-matrix.md](./01-permission-matrix.md) | 功能权限矩阵 (**唯一数据源**) |
+| [02-tier-config.md](./02-tier-config.md) | Tier JSON 配置 |
+| [03-system-design.md](./03-system-design.md) | 系统架构总览 |
+| [04-feature-flag-engine.md](./04-feature-flag-engine.md) | Feature Flag 评估引擎 |
+| [05-ui-spec.md](./05-ui-spec.md) | UI 交互规范 |
+| [24-conflict-resolution.md](./24-conflict-resolution.md) | 权限冲突解决 |
 
 ---
 

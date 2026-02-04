@@ -1,8 +1,10 @@
 # 退款完整处理流程
 
-> **版本**: v2.0
+> **版本**: v2.2
 > **日期**: 2026-02-04
 > **状态**: 产品确认
+> **重要**: 积分术语与 [15-credits-lifecycle.md](./15-credits-lifecycle.md) 二维模型保持一致
+> **实现状态**: 🔴 数据库层待实现
 
 ---
 
@@ -107,14 +109,56 @@
 - 下次充值/发放时扣回
 ```
 
-### 3.3 扣回顺序
+### 3.3 扣回顺序 (FEFO 逆序)
+
+> 参考 [15-credits-lifecycle.md](./15-credits-lifecycle.md) 的二维模型 (source_type + expires_at)
+
+退款时积分扣回顺序与 FEFO 扣费顺序相反，**从最后扣费的来源开始回收**:
 
 ```
-按逆优先级扣回:
-1. compensation (补偿积分)
-2. gift (赠送积分)
-3. permanent (永久积分)
-4. monthly (月度积分)
+按逆优先级扣回 (7 种 source_type):
+1. compensation   - 客服补偿 (最后扣费的，最先扣回)
+2. earning        - 销售收入
+3. purchase       - 购买积分
+4. bonus_campaign - 营销活动赠送
+5. bonus_referral - 邀请奖励
+6. bonus_signup   - 注册赠送
+7. subscription   - 订阅月度积分 (最先扣费的，最后扣回)
+```
+
+**扣回算法**:
+
+```python
+async def deduct_credits_for_refund(user_id: str, amount: int) -> int:
+    """按 FEFO 逆序扣回积分"""
+    # 1. 先从永久积分池扣回 (按 source_type 逆优先级)
+    reverse_priority = [
+        'compensation', 'earning', 'purchase',
+        'bonus_campaign', 'bonus_referral', 'bonus_signup'
+    ]
+
+    remaining = amount
+    for source in reverse_priority:
+        if remaining <= 0:
+            break
+        pools = await get_pools_by_source(user_id, source, expires_at=None)
+        for pool in pools:
+            deducted = min(pool.balance, remaining)
+            await deduct_from_pool(pool.id, deducted)
+            remaining -= deducted
+
+    # 2. 最后从订阅月度积分扣回 (expires_at DESC)
+    if remaining > 0:
+        subscription_pools = await get_pools_by_source(
+            user_id, 'subscription',
+            order_by='expires_at DESC'  # 最晚过期的先扣
+        )
+        for pool in subscription_pools:
+            deducted = min(pool.balance, remaining)
+            await deduct_from_pool(pool.id, deducted)
+            remaining -= deducted
+
+    return amount - remaining  # 实际扣回数量
 ```
 
 ---
@@ -198,7 +242,7 @@ CREATE TABLE IF NOT EXISTS refunds (
 );
 
 -- 索引
-CREATE INDEX idx_refunds_user ON refunds(user_id, created_at DESC);
+CREATE INDEX idx_refunds_user ON refunds(user_id, requested_at DESC);
 CREATE INDEX idx_refunds_status ON refunds(status);
 ```
 
@@ -242,6 +286,46 @@ GET /api/v1/refunds/{refund_id}
 # 查询退款历史
 GET /api/v1/refunds?limit=20&offset=0
 ```
+
+---
+
+## 十、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 10.1 数据库层 (🔴 P0)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **创建 `refunds` 表** | 退款记录表 (参见 §6.1) | 🔴 P0 |
+| 2 | **创建退款相关索引** | `idx_refunds_user`, `idx_refunds_status` | 🔴 P0 |
+| 3 | **创建 `process_refund` RPC** | 原子退款处理，包括积分扣回 | 🔴 P0 |
+
+### 10.2 后端逻辑层 (🔴 P0)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `RefundService` 实现 | 退款业务逻辑 |
+| 2 | `RefundRepository` | 退款数据访问 |
+| 3 | `deduct_credits_for_refund()` | FEFO 逆序积分扣回 (参见 §3.3) |
+| 4 | Stripe Webhook 处理 | `charge.refunded` 事件处理 |
+| 5 | 退款审核流程 | 自动批准 + 人工审核逻辑 |
+
+### 10.3 API 层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `POST /api/v1/refunds` | 申请退款 |
+| 2 | `GET /api/v1/refunds/{id}` | 查询退款状态 |
+| 3 | `GET /api/v1/refunds` | 查询退款历史 |
+
+### 10.4 其他 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | 退款冷却期逻辑 | 防止退款滥用 |
+| 2 | 退款通知邮件 | 申请收到、审核通过、退款成功、审核拒绝 |
+| 3 | 退款监控告警 | 日退款率、处理时长、重复退款 |
 
 ---
 

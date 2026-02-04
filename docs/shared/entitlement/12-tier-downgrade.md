@@ -1,8 +1,9 @@
 # Tier 降级处理
 
-> **版本**: v2.0
+> **版本**: v2.1
 > **日期**: 2026-02-04
 > **状态**: 产品确认
+> **实现状态**: 🔴 部分待实现
 
 ---
 
@@ -651,6 +652,46 @@ async function handleUpgrade(userId: string, newTier: string) {
 | Tier 升级 - 立即生效 | ✅ | 解锁所有资源 |
 | 支付失败重试 | ✅ | 4 次重试机制 |
 | 数据导出 | ✅ | 任何 Tier 可导出 |
+
+---
+
+## 十四、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 14.1 数据库层 (🔴 P0)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **添加 `profiles` 宽限期字段** | `grace_period_start`, `grace_period_end` | 🔴 P0 |
+| 2 | **添加 `payment_records` 宽限期字段** | `grace_period_start`, `grace_period_end` | 🔴 P0 |
+| 3 | **添加资源只读标记字段** | `is_read_only`, `read_only_reason`, `pending_lock`, `pending_lock_at` (projects/workspaces/folders/custom_assets) | 🔴 P0 |
+
+### 14.2 后端逻辑层 (🔴 P0)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `DowngradeService` 实现 | 降级处理服务 (参见 §11) |
+| 2 | `_check_exceeded_resources()` | 检查超额资源 |
+| 3 | `_mark_resources_pending_lock()` | 标记待锁定资源 |
+| 4 | `execute_grace_period_end()` | 宽限期结束执行锁定 |
+| 5 | 宽限期定时任务 | 自动降级调度 |
+
+### 14.3 前端组件 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `GracePeriodBanner` | 宽限期提醒 Banner |
+| 2 | `LockedProjectCard` | 只读项目卡片 (带 🔒 图标) |
+| 3 | `DowngradeConfirmModal` | 降级确认弹窗 |
+| 4 | 资源选择 Modal | 超额时用户选择保留的资源 |
+
+### 14.4 通知系统 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | 降级通知邮件 | 降级前 7 天/1 天/当天 |
+| 2 | 宽限期结束邮件 | 资源锁定通知 |
 
 ---
 

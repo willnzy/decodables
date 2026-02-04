@@ -8,6 +8,18 @@
 
 ---
 
+## 相关文档
+
+| 文档 | 说明 |
+|------|------|
+| [README.md](./README.md) | 文档导航索引 |
+| [01-permission-matrix.md](./01-permission-matrix.md) | 功能权限矩阵 (**唯一数据源**) |
+| [02-tier-config.md](./02-tier-config.md) | Tier JSON 配置 |
+| [06-priority-rules.md](./06-priority-rules.md) | 7 层优先级规则 |
+| [24-conflict-resolution.md](./24-conflict-resolution.md) | 权限冲突解决 |
+
+---
+
 ## 目录
 
 - [1. 继承规则定义](#1-继承规则定义)

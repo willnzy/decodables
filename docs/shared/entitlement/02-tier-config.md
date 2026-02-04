@@ -1,6 +1,7 @@
 # Tier 配置详情
 
-> 版本: v1.0 | 更新: 2026-02-04 | 来源: 基于 01-permission-matrix.md 权限矩阵定义
+> 版本: v1.1 | 更新: 2026-02-04 | 来源: 基于 01-permission-matrix.md 权限矩阵定义
+> **实现状态**: 🔴 数据库层待实现 (user_feature_overrides 表)
 
 ## 相关文档
 
@@ -560,7 +561,7 @@ export const EMERGENCY_TIER_CONFIGS: Record<string, {
     maxProjects: 10,
     maxFolders: 20,
     maxWorkspaces: 1,
-    maxCustomAssets: 0,
+    maxCustomAssets: 0,   // t2 不支持自定义素材上传
     features: TIER_FEATURES_FALLBACK.t2,
   },
   t3: {
@@ -727,3 +728,40 @@ export function normalizeFeatureKey(key: string): string {
   "can_purchase_credits": true
 }
 ```
+
+---
+
+## 七、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 7.1 数据库层 (🔴 P0)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **创建 `user_feature_overrides` 表** | 用户级权限覆盖，Admin 授权核心表 | 🔴 P0 |
+| 2 | **创建 `user_feature_override_logs` 表** | 权限覆盖审计日志 | 🟡 P1 |
+| 3 | **创建过期清理索引** | `idx_user_feature_overrides_expires` | 🟡 P1 |
+| 4 | **添加 RLS 策略** | user_feature_overrides 表安全控制 | 🟡 P1 |
+
+### 7.2 后端逻辑层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | **7 级权限优先级评估** | Kill Switch > Feature Flag > User Override > Group > Workspace > Tier > Fallback |
+| 2 | `UserFeatureOverrideRepository` | Override CRUD 操作 |
+| 3 | `check_feature_access()` Service | 完整权限评估逻辑 |
+| 4 | Override 过期定时任务 | 清理过期 Override，记录审计日志 |
+
+### 7.3 Admin API (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `POST /admin/users/{id}/overrides` | 为用户添加功能覆盖 |
+| 2 | `DELETE /admin/users/{id}/overrides/{key}` | 删除用户功能覆盖 |
+| 3 | `GET /admin/users/{id}/overrides` | 查询用户所有覆盖 |
+| 4 | `GET /admin/overrides/expiring` | 查询即将过期的覆盖 |
+
+---
+
+**END OF DOCUMENT**

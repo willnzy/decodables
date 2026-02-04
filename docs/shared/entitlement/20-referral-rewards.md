@@ -1,8 +1,10 @@
 # 邀请奖励完整规则
 
-> **版本**: v2.0
+> **版本**: v2.2
 > **日期**: 2026-02-04
 > **状态**: 产品确认
+> **重要**: 积分 source_type 为 `bonus_referral`，参考 [15-credits-lifecycle.md](./15-credits-lifecycle.md)
+> **注意**: 所有数值均从 `system_configs` 配置获取，文档中的数值仅为示例
 
 ---
 
@@ -20,14 +22,21 @@
 
 ### 1.1 双向奖励
 
-| 角色 | 奖励 | 发放条件 |
-|------|------|----------|
-| **邀请人** | 50 积分 | 被邀请人完成注册 |
-| **被邀请人** | 50 积分 | 完成注册 |
+> **所有数值通过 `system_configs` 配置**，下表为默认值示例
+
+| 角色 | 配置 key | 默认值 | 发放条件 |
+|------|----------|--------|----------|
+| **邀请人** | `referral.referrer_reward` | (配置) | 被邀请人完成注册 |
+| **被邀请人** | `referral.referee_reward` | (配置) | 完成注册 |
 
 ### 1.2 奖励类型
 
-邀请奖励积分类型为 `gift`，按积分扣费优先级排在第 3 位。
+邀请奖励积分 `source_type` 为 `bonus_referral`，属于**永久积分** (expires_at = NULL)。
+
+按 FEFO 扣费优先级，永久积分中 `bonus_referral` 排在第 5 位:
+```
+subscription > bonus_signup > bonus_referral > bonus_campaign > earning > purchase > compensation
+```
 
 ---
 
@@ -55,9 +64,21 @@
 
 ```
 被邀请人完成注册后立即:
-1. 被邀请人账户 +50 gift 积分
-2. 邀请人账户 +50 gift 积分
+1. 被邀请人账户 + {config: referral.referee_reward} bonus_referral 积分
+2. 邀请人账户 + {config: referral.referrer_reward} bonus_referral 积分
 3. 双方收到通知
+```
+
+**配置示例** (system_configs):
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('referral.referrer_reward', '50', 'integer', 'referral', '邀请人奖励积分'),
+('referral.referee_reward', '50', 'integer', 'referral', '被邀请人奖励积分'),
+('referral.daily_reward_limit', '500', 'integer', 'referral', '单日奖励上限'),
+('referral.total_reward_limit', '5000', 'integer', 'referral', '总奖励上限'),
+('referral.same_ip_limit_24h', '3', 'integer', 'referral', '同IP 24小时内限制'),
+('referral.risk_delay_days', '7', 'integer', 'referral', '风控延迟发放天数');
 ```
 
 ---
@@ -66,23 +87,23 @@
 
 ### 3.1 邀请人限制
 
-| 限制项 | 规则 |
-|--------|------|
-| 账户状态 | 必须是激活状态 |
-| 最低 Tier | 无限制 (t1 也可邀请) |
-| 每日邀请上限 | 无限制 |
-| 总邀请上限 | 无限制 |
-| 单日奖励上限 | 500 积分 (10 人) |
-| 总奖励上限 | 5000 积分 (100 人) |
+| 限制项 | 配置 key | 说明 |
+|--------|----------|------|
+| 账户状态 | - | 必须是激活状态 |
+| 最低 Tier | - | 无限制 (t1 也可邀请) |
+| 每日邀请上限 | - | 无限制 |
+| 总邀请上限 | - | 无限制 |
+| 单日奖励上限 | `referral.daily_reward_limit` | 从配置获取 |
+| 总奖励上限 | `referral.total_reward_limit` | 从配置获取 |
 
 ### 3.2 被邀请人限制
 
-| 限制项 | 规则 |
-|--------|------|
-| 必须是新用户 | 从未注册过 |
-| 邮箱验证 | 必须完成邮箱验证 |
-| 同一设备 | 同一设备只能被邀请一次 |
-| 同一 IP | 同一 IP 24 小时内最多 3 次 |
+| 限制项 | 配置 key | 说明 |
+|--------|----------|------|
+| 必须是新用户 | - | 从未注册过 |
+| 邮箱验证 | - | 必须完成邮箱验证 |
+| 同一设备 | - | 同一设备只能被邀请一次 |
+| 同一 IP | `referral.same_ip_limit_24h` | 24 小时内限制 (从配置获取) |
 
 ---
 
@@ -110,7 +131,7 @@
 
 对于触发风控的邀请，采用延迟发放:
 ```
-被邀请人注册 → 7 天观察期 → 正常使用 → 发放奖励
+被邀请人注册 → {config: referral.risk_delay_days} 天观察期 → 正常使用 → 发放奖励
 ```
 
 ---
@@ -142,13 +163,13 @@
 ```sql
 CREATE TABLE IF NOT EXISTS referrals (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    referrer_id TEXT NOT NULL REFERENCES profiles(user_id),
-    referee_id TEXT REFERENCES profiles(user_id), -- 注册后填充
+    referrer_id UUID NOT NULL REFERENCES profiles(id),
+    referee_id UUID REFERENCES profiles(id), -- 注册后填充
     referral_code VARCHAR(20) NOT NULL,
     referee_email TEXT, -- 被邀请人邮箱 (可选预填)
     status VARCHAR(20) DEFAULT 'pending', -- pending, completed, rejected, expired
-    referrer_reward INT DEFAULT 50,
-    referee_reward INT DEFAULT 50,
+    referrer_reward INT, -- 从 system_configs 获取 referral.referrer_reward
+    referee_reward INT,  -- 从 system_configs 获取 referral.referee_reward
     reward_status VARCHAR(20) DEFAULT 'pending', -- pending, approved, rejected
     risk_flags TEXT[], -- 风控标记
     device_fingerprint TEXT,
@@ -179,7 +200,7 @@ CREATE INDEX idx_referral_codes_code ON referral_codes(code);
 
 ```
 ┌─────────────────────────────────┐
-│ 邀请好友，双方各得 50 积分       │
+│ 邀请好友，双方各得 {奖励积分} 积分 │  ← 从配置动态获取
 │                                 │
 │ 您的专属邀请链接:                │
 │ ┌─────────────────────────────┐ │
@@ -190,8 +211,8 @@ CREATE INDEX idx_referral_codes_code ON referral_codes(code);
 │ ─────────────────────────────── │
 │ 邀请记录                         │
 │                                 │
-│ 已邀请: 5 人                     │
-│ 已获得: 250 积分                 │
+│ 已邀请: {count} 人               │
+│ 已获得: {total_rewards} 积分     │
 │                                 │
 │ 最近邀请:                        │
 │ • j***@gmail.com - 已完成       │
@@ -204,11 +225,11 @@ CREATE INDEX idx_referral_codes_code ON referral_codes(code);
 ```
 邀请人通知:
 "🎉 您邀请的好友 j***@gmail.com 已完成注册，
-您获得 50 积分奖励！"
+您获得 {referrer_reward} 积分奖励！"    ← 从配置获取
 
 被邀请人通知:
 "🎉 欢迎加入！感谢您通过好友邀请注册，
-您获得 50 积分奖励！"
+您获得 {referee_reward} 积分奖励！"     ← 从配置获取
 ```
 
 ---

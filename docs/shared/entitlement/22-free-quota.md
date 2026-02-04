@@ -1,8 +1,9 @@
 # 免费额度/体验次数
 
-> **版本**: v2.0
+> **版本**: v2.1
 > **日期**: 2026-02-04
 > **状态**: 产品确认
+> **更新**: 完善与积分关系的逻辑，添加试用期状态检查
 
 ---
 
@@ -229,20 +230,28 @@ Response: {
 
 | 场景 | 优先级 | 说明 |
 |------|--------|------|
-| 订阅用户 | 积分 | 直接扣积分 |
-| 非订阅用户有额度 | 免费额度 | 先用免费额度 |
-| 非订阅用户无额度 | 拒绝 | 提示升级 |
+| 订阅用户 (t2/t3) | 积分 | 直接扣积分 |
+| t1 试用期内 | 积分 | 使用注册赠送的永久积分 |
+| t1 试用期后有免费额度 | 免费额度 | 使用免费体验次数 |
+| t1 试用期后无免费额度 | 拒绝 | 提示升级 |
 
-```
+```python
 使用 AI 功能:
 if user.tier in ['t2', 't3']:
+    # 订阅用户直接扣积分
     consume_credits()
-else:
+elif user.tier == 't1' and is_within_trial_period(user):
+    # t1 试用期内，使用注册赠送的积分
+    consume_credits()
+elif user.tier == 't1':
+    # t1 试用期后，尝试使用免费额度
     if has_free_quota():
         consume_free_quota()
     else:
         show_upgrade_modal()
 ```
+
+> **重要**: `is_within_trial_period()` 检查逻辑参见 [11-trial-expiration.md](./11-trial-expiration.md)
 
 ---
 

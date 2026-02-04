@@ -1,9 +1,10 @@
 # 积分完整生命周期
 
-> **版本**: v3.0
+> **版本**: v3.1
 > **日期**: 2026-02-04
 > **状态**: 产品确认
 > **重大变更**: 采用二维模型（来源类型 + 有效期）
+> **实现状态**: 🔴 数据库层待实现
 
 ---
 
@@ -739,7 +740,117 @@ function ExpiringCreditsBanner({ expiringSoon }: { expiringSoon: number }) {
 
 ---
 
-## 九、配置项
+## 九、积分池运维场景
+
+> 补充审计发现的遗漏场景：积分池合并/拆分
+
+### 9.1 积分池合并
+
+**触发条件**：用户积分池数量超过阈值（默认 50），影响查询性能
+
+**合并规则**：
+
+```sql
+-- 合并同类型、同过期日期的积分池
+WITH pools_to_merge AS (
+    SELECT
+        user_id,
+        source_type,
+        DATE(expires_at) as expiry_date,  -- 按天合并
+        COUNT(*) as pool_count,
+        SUM(balance) as total_balance
+    FROM credit_pools
+    WHERE balance > 0
+    GROUP BY user_id, source_type, DATE(expires_at)
+    HAVING COUNT(*) > 1
+)
+-- 执行合并
+INSERT INTO credit_pools (user_id, source_type, balance, expires_at, description)
+SELECT
+    user_id,
+    source_type,
+    total_balance,
+    expiry_date + INTERVAL '23 hours 59 minutes 59 seconds',
+    '系统合并 - 原 ' || pool_count || ' 个积分池'
+FROM pools_to_merge;
+
+-- 删除已合并的旧记录
+DELETE FROM credit_pools
+WHERE id IN (SELECT id FROM old_pools_to_delete);
+```
+
+**合并触发方式**：
+
+| 方式 | 说明 | 优先级 |
+|------|------|--------|
+| 定时任务 | 每周自动合并超过 50 个池的用户 | 🟢 P2 |
+| 手动触发 | Admin 页面操作 | 🟢 P2 |
+| 消费时合并 | 消费后池数量超阈值则触发 | 🟡 P1 |
+
+### 9.2 积分池拆分
+
+**触发条件**：退款时需要从特定来源回收积分，但该池已被部分消费
+
+**拆分场景示例**：
+
+```
+原始状态:
+- 池 A: purchase, balance=80, 原始=100 (已消费 20)
+- 用户请求退款 100 积分
+
+问题: 池 A 只剩 80，无法完全回收
+
+处理方式: 欠款机制（已在 §五 定义），而非拆分
+```
+
+**设计决策**：不支持积分池拆分，使用欠款机制替代
+
+| 方案 | 优点 | 缺点 | 采用 |
+|------|------|------|:----:|
+| **欠款机制** | 简单，不破坏已有池结构 | 需要额外字段 | ✅ |
+| 池拆分 | 精确匹配退款 | 复杂，易出错 | ❌ |
+| 比例回收 | 平均分摊 | 不符合财务要求 | ❌ |
+
+### 9.3 清零与重置
+
+**月度积分重置**：
+
+```sql
+-- 每月 1 日 00:00:00 UTC 执行
+-- 1. 清零上月未消费的月度积分
+UPDATE credit_pools
+SET balance = 0,
+    updated_at = NOW()
+WHERE source_type = 'subscription'
+  AND expires_at < NOW()
+  AND balance > 0;
+
+-- 2. 记录过期流水
+INSERT INTO credit_transactions (user_id, type, amount, balance_after, source_type, description)
+SELECT
+    user_id,
+    'expired',
+    -balance,
+    0,
+    'subscription',
+    '月度积分过期'
+FROM credit_pools
+WHERE source_type = 'subscription'
+  AND expires_at < NOW()
+  AND balance > 0;
+```
+
+**全额清零场景**（管理员操作）：
+
+| 场景 | 处理方式 | 审计要求 |
+|------|---------|---------|
+| 账户冻结 | 保留池但标记 frozen | 需记录原因 |
+| 退款滥用 | 扣除所有可用积分 | 需双人审批 |
+| 测试账户清理 | 物理删除所有池 | 需标记为测试 |
+
+---
+
+## 十、配置项
 
 ```sql
 INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
@@ -760,9 +871,9 @@ INSERT INTO system_configs (key, value, value_type, config_group, description) V
 
 ---
 
-## 十、迁移方案
+## 十一、迁移方案
 
-### 10.1 从旧模型迁移
+### 11.1 从旧模型迁移
 
 ```sql
 -- 将旧的 profiles 字段迁移到 credit_pools 表
@@ -792,7 +903,7 @@ FROM profiles
 WHERE credits_compensation > 0;
 ```
 
-### 10.2 兼容性
+### 11.2 兼容性
 
 迁移完成后，保留 profiles 表的旧字段作为缓存，通过触发器同步：
 
@@ -816,6 +927,50 @@ CREATE TRIGGER trg_credit_pools_update
 AFTER INSERT OR UPDATE OR DELETE ON credit_pools
 FOR EACH ROW EXECUTE FUNCTION update_profile_credits_cache();
 ```
+
+---
+
+## 十二、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 12.1 数据库层 (🔴 P0)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **创建 `credit_pools` 表** | 积分二维模型核心表，当前系统仍使用旧的 profiles 二桶模型 | 🔴 P0 |
+| 2 | **创建 FEFO 查询索引** | `idx_credit_pools_user_expiry` 索引支持高效扣费查询 | 🔴 P0 |
+| 3 | **创建过期清理索引** | `idx_credit_pools_expires` 索引支持定时任务清理 | 🟡 P1 |
+| 4 | **扩展 `profiles` 表** | 添加 `credits_total` (缓存), `credits_debt` (欠款) 字段 | 🔴 P0 |
+| 5 | **扩展 `credit_transactions` 表** | 添加 `pool_id`, `source_type` CHECK (7种) 约束 | 🔴 P0 |
+| 6 | **创建 `add_credits_atomic` RPC** | 原子发放积分，支持欠款抵扣 | 🔴 P0 |
+| 7 | **更新 `deduct_credits_atomic` RPC** | 基于 credit_pools 实现 FEFO 算法 | 🔴 P0 |
+| 8 | **创建缓存同步触发器** | `trg_credit_pools_update` 同步 profiles.credits_total | 🟡 P1 |
+
+### 12.2 后端逻辑层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | 积分池 Repository | `CreditPoolRepository` CRUD 操作 |
+| 2 | FEFO 扣费 Service | `consume_credits()` 按优先级扣费 |
+| 3 | 退款回收 Service | `revoke_credits_for_refund()` 反向回收 |
+| 4 | 过期处理定时任务 | 每小时清理过期积分 |
+| 5 | 欠款处理逻辑 | 新积分自动抵扣欠款 |
+
+### 12.3 前端展示层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `CreditsDisplay` 组件升级 | 支持 7 种来源类型显示 |
+| 2 | 过期提醒 Banner | `ExpiringCreditsBanner` 组件 |
+| 3 | 积分明细 Collapsible | 展开显示各类型余额 |
+
+### 12.4 数据迁移 (⚠️ 一次性)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | 旧数据迁移脚本 | 将 profiles 二桶模型数据迁移到 credit_pools |
+| 2 | 数据一致性验证 | 迁移后验证总余额一致 |
 
 ---
 

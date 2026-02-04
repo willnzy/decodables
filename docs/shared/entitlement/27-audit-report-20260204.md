@@ -349,7 +349,7 @@ ON user_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
 
 ## 九、文档同步检查
 
-### 已修复的文档问题
+### 已修复的文档问题 (初审)
 
 | 文档 | 修复内容 |
 |------|---------|
@@ -363,6 +363,39 @@ ON user_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
 | 09-config-versioning.md | 更新来源注释 |
 | 10-workspace-override.md | 更新来源注释 |
 | 11-trial-expiration.md | 更新来源注释 |
+
+### 本次文档审计修复 (2026-02-04 复审)
+
+#### P0 级别修复 (积分一致性)
+
+| 文档 | 版本变更 | 修复内容 |
+|------|----------|---------|
+| **18-refund-processing.md** | v2.0 → v2.1 | 1. 修正 FEFO 逆序扣回算法（7 种 source_type）<br>2. 将过时的「永久/月度」术语改为二维模型 |
+
+#### P1 级别修复 (文档内部缺陷)
+
+| 文档 | 版本变更 | 修复内容 |
+|------|----------|---------|
+| **20-referral-rewards.md** | v2.0 → v2.2 | 1. `gift` → `bonus_referral` (source_type 一致性)<br>2. referrer_id 类型 TEXT → UUID<br>3. **移除所有硬编码数值**，改用 system_configs 配置 key 引用 |
+| **08-user-groups.md** | v1.0 → v1.1 | 补全 7 层优先级描述（从错误的 4 层修正为 L0-L6） |
+| **16-renewal-reminders.md** | v1.0 → v1.1 | 添加年度订阅 30 天提醒逻辑，与 S12 场景一致 |
+| **17-invoice-management.md** | v2.0 → v2.1 | `transaction_id` → `payment_record_id` (引用正确的表) |
+| **09-config-versioning.md** | v1.0 → v1.1 | feature_flags 字段名与 04 文档一致 (flag_key→key, is_enabled→enabled) |
+| **22-free-quota.md** | v2.0 → v2.1 | 完善「与积分关系」逻辑，添加试用期状态检查 |
+
+#### 配置化改进 (20-referral-rewards.md)
+
+新增 system_configs 配置示例：
+
+```sql
+INSERT INTO system_configs (key, value, value_type, config_group, description) VALUES
+('referral.referrer_reward', '50', 'integer', 'referral', '邀请人奖励积分'),
+('referral.referee_reward', '50', 'integer', 'referral', '被邀请人奖励积分'),
+('referral.daily_reward_limit', '500', 'integer', 'referral', '单日奖励上限'),
+('referral.total_reward_limit', '5000', 'integer', 'referral', '总奖励上限'),
+('referral.same_ip_limit_24h', '3', 'integer', 'referral', '同IP 24小时内限制'),
+('referral.risk_delay_days', '7', 'integer', 'referral', '风控延迟发放天数');
+```
 
 ### 待更新的文档
 

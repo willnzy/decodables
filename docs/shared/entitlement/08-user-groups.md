@@ -2,9 +2,11 @@
 
 > 本文档详细说明 Make Decodables 用户组系统的设计与实现，支持对用户组进行批量权限管理。
 
-**版本**: v1.0
+**版本**: v1.2
 **创建日期**: 2026-02-04
 **来源**: 基于 01-permission-matrix.md 用户组授权定义
+**更新**: 添加待实现清单
+**实现状态**: 🔴 数据库层待实现
 
 ---
 
@@ -26,10 +28,19 @@
 - **Beta 测试组**: 参与内测的用户提前体验新功能
 - **企业试用组**: 企业客户试用期间的特殊权限
 
-**权限评估优先级**:
+**权限评估 7 层优先级** (完整版，参考 [06-priority-rules.md](./06-priority-rules.md)):
+
 ```
-User Override > Group Override > Tier Config > Default
+L0: Kill Switch       (最高，全局关闭)
+L1: Feature Flag      (功能开关/灰度)
+L2: User Override     (用户级覆盖)
+L3: Group Override    (用户组覆盖) ← 本文档描述的层级
+L4: Workspace Override(工作区覆盖)
+L5: Tier Config       (Tier 基础配置)
+L6: Fallback Default  (兜底默认值)
 ```
+
+> **注意**: Group Override 在评估链中处于 L3 层级，优先于 Workspace 和 Tier Config，但低于 User Override。
 
 ---
 
@@ -309,8 +320,46 @@ await group_service.set_group_feature(
 
 ---
 
+---
+
+## 6. 待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 6.1 数据库层 (🔴 P0)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **创建 `user_groups` 表** | 用户组定义表 | 🟡 P1 |
+| 2 | **创建 `user_group_members` 表** | 用户组成员关联表 | 🟡 P1 |
+| 3 | **创建 `group_feature_overrides` 表** | 组级权限覆盖表 | 🟡 P1 |
+| 4 | **创建 `group_feature_override_logs` 表** | 组级权限审计日志 | 🟢 P2 |
+| 5 | **添加相关索引** | 参见 2.5 节索引设计 | 🟡 P1 |
+
+### 6.2 后端逻辑层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `GroupService` 实现 | 参见第 3 节完整代码 |
+| 2 | `UserGroupRepository` | 用户组 CRUD |
+| 3 | 权限评估集成 | 在 7 级优先级链中集成 Group Override (L3) |
+
+### 6.3 Admin API (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `POST /admin/groups` | 创建用户组 |
+| 2 | `POST /admin/groups/{id}/members` | 批量添加成员 |
+| 3 | `POST /admin/groups/{id}/features` | 设置组级权限 |
+| 4 | `GET /admin/groups` | 查询所有用户组 |
+| 5 | `GET /admin/groups/{id}/members` | 查询组成员 |
+
+---
+
 **文档版本历史**:
 
 | 版本 | 日期 | 说明 |
 |------|------|------|
+| v1.2 | 2026-02-04 | 添加待实现清单 |
+| v1.1 | 2026-02-04 | 修正权限评估优先级为完整 7 层 |
 | v1.0 | 2026-02-04 | 从 entitlement-permission-matrix.md 第 7.4 节提取 |

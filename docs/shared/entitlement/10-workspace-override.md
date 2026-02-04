@@ -2,9 +2,11 @@
 
 > 本文档描述 Workspace 级权限覆盖机制，支持 Team Plan 等多租户场景。
 
-**版本**: v1.0
+**版本**: v1.2
 **创建日期**: 2026-02-04
+**更新日期**: 2026-02-04
 **来源**: 基于 03-system-design.md Workspace 权限定义
+**实现状态**: 🔴 数据库层待实现
 
 ---
 
@@ -267,22 +269,155 @@ print(f"已为 Workspace 设置 {count} 个权限")
 
 ---
 
-## 5. 注意事项
+## 5. 跨 Workspace 权限场景
 
-### 5.1 过期处理
+> 补充审计发现的遗漏场景：用户属于多个 Workspace 时的权限处理
+
+### 5.1 多 Workspace 成员场景
+
+```
+用户 Alice (个人 Tier: t1) 属于:
+- Workspace A (Team Pro Plan, t3 权限)
+- Workspace B (Team Starter Plan, t2 权限)
+- 个人 Workspace (无 Team Plan)
+
+问题: Alice 访问不同 Workspace 时权限如何？
+```
+
+### 5.2 权限继承规则
+
+| 场景 | 访问 Workspace A | 访问 Workspace B | 访问个人 Workspace |
+|------|-----------------|-----------------|-------------------|
+| **功能权限** | t3 权限 (Team Pro) | t2 权限 (Team Starter) | t1 权限 (个人) |
+| **配额** | Workspace A 配额 | Workspace B 配额 | 个人配额 |
+| **积分** | **使用个人积分** | **使用个人积分** | **使用个人积分** |
+
+**核心原则**：
+1. **功能权限**：跟随当前 Workspace 的 Team Plan
+2. **资源配额**：跟随当前 Workspace 的配额
+3. **积分消耗**：**始终使用个人账户积分** (不跟随 Workspace)
+
+### 5.3 积分不跟随 Workspace 的原因
+
+| 考虑因素 | 说明 |
+|---------|------|
+| **计费清晰** | 避免团队成员互相消耗积分导致的纠纷 |
+| **滥用防护** | 防止用户通过加入多个 Workspace 获取无限积分 |
+| **退出清算** | 成员离开时无需处理积分分配问题 |
+| **业界惯例** | Canva、Figma 等产品均采用此模式 |
+
+### 5.4 特殊场景处理
+
+#### 5.4.1 Workspace 间切换
+
+```typescript
+// 用户在 Workspace A 中使用 AI 功能
+const result = await useAIFeature(projectId);
+
+// 权限检查流程:
+// 1. 获取项目所属 Workspace
+const workspace = await getProjectWorkspace(projectId);
+
+// 2. 检查 Workspace Override
+const wsPermission = await getWorkspaceOverride(workspace.id, 'ai_features');
+
+// 3. 若有 Override 且 allowed，检查积分
+if (wsPermission?.allowed) {
+  // 使用用户个人积分，不是 Workspace 积分
+  await deductCredits(userId, AI_FEATURE_COST);
+}
+```
+
+#### 5.4.2 成员离开 Workspace
+
+```typescript
+async function handleMemberLeave(userId: string, workspaceId: string) {
+  // 1. 移除成员关系 (workspace_members 表)
+  await db.execute(`
+    DELETE FROM workspace_members
+    WHERE user_id = $1 AND workspace_id = $2
+  `, userId, workspaceId);
+
+  // 2. 个人积分不变 (无需处理)
+  // 3. 用户回退到个人 Tier 权限
+  // 4. 在该 Workspace 创建的项目:
+  //    - 如果用户是 Owner：项目保留，但无法访问该 Workspace
+  //    - 如果用户不是 Owner：失去编辑权限
+}
+```
+
+#### 5.4.3 Workspace 所有权转移
+
+```typescript
+async function transferWorkspaceOwnership(
+  workspaceId: string,
+  oldOwnerId: string,
+  newOwnerId: string
+) {
+  // 1. 更新 Owner
+  await db.execute(`
+    UPDATE workspaces SET owner_id = $1 WHERE id = $2
+  `, newOwnerId, workspaceId);
+
+  // 2. Team Plan 订阅绑定转移
+  await transferSubscription(oldOwnerId, newOwnerId, workspaceId);
+
+  // 3. Workspace Override 保持不变 (跟随 Workspace，不跟随 Owner)
+}
+```
+
+---
+
+## 6. 注意事项
+
+### 6.1 过期处理
 
 - `expires_at` 字段支持权限自动过期
 - 查询时自动过滤已过期的覆盖
 - 建议配合定时任务清理过期记录
 
-### 5.2 审计追踪
+### 6.2 审计追踪
 
 - 所有变更记录在 `workspace_feature_override_logs` 表
 - 支持追溯谁在什么时间做了什么修改
 - 便于合规审计和问题排查
 
-### 5.3 性能考虑
+### 6.3 性能考虑
 
 - `workspace_id` 索引确保快速查询
 - 部分索引 `expires_at` 优化过期记录查询
 - 建议对高频访问的 Workspace 权限做缓存
+
+---
+
+## 7. 待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 7.1 数据库层 (🟡 P1)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **创建 `workspace_feature_overrides` 表** | Workspace 级权限覆盖表 | 🟡 P1 |
+| 2 | **创建 `workspace_feature_override_logs` 表** | 权限变更审计日志 | 🟢 P2 |
+| 3 | **添加相关索引** | 参见 1.3 节索引设计 | 🟡 P1 |
+
+### 7.2 后端逻辑层 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `WorkspaceOverrideService` 实现 | 参见第 2 节完整代码 |
+| 2 | `apply_team_plan()` 方法 | 批量应用 Team Plan 权限 |
+| 3 | 权限评估集成 | 在 7 级优先级链中集成 Workspace Override (L5) |
+
+### 7.3 Admin API (🟢 P2)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `POST /admin/workspaces/{id}/features` | 设置 Workspace 级权限 |
+| 2 | `GET /admin/workspaces/{id}/features` | 查询 Workspace 权限 |
+| 3 | `POST /admin/workspaces/{id}/apply-plan` | 应用 Team Plan |
+
+---
+
+**END OF DOCUMENT**

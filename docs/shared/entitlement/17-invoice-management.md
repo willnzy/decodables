@@ -1,8 +1,9 @@
 # 发票与收据管理
 
-> **版本**: v2.0
+> **版本**: v2.1
 > **日期**: 2026-02-04
 > **状态**: 产品确认
+> **更新**: 修正表引用为 payment_records
 
 ---
 
@@ -135,7 +136,7 @@
 CREATE TABLE IF NOT EXISTS billing_documents (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id),
-    transaction_id UUID REFERENCES transactions(id),
+    payment_record_id UUID REFERENCES payment_records(id), -- 关联支付记录
     document_type VARCHAR(20) NOT NULL, -- receipt, invoice, credit_note
     document_number VARCHAR(50) NOT NULL UNIQUE,
     storage_path TEXT NOT NULL, -- Supabase Storage 路径
@@ -213,7 +214,7 @@ GET /api/v1/billing/documents/{document_id}/download
 # 申请发票
 POST /api/v1/billing/documents/invoice
 {
-    "transaction_id": "uuid",
+    "payment_record_id": "uuid",
     "billing_info": {
         "company_name": "Acme Inc",
         "tax_id": "12-3456789",

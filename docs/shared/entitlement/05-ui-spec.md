@@ -1,6 +1,6 @@
 # 用户权限 UI 交互规范
 
-> **版本**: v1.5
+> **版本**: v1.6
 > **日期**: 2026-02-04
 > **状态**: 设计完成
 > **适用范围**: 功能权限、配额限制的前端 UI 交互
@@ -101,10 +101,17 @@ const { isAtLimit, checkAndTrigger } = useQuotaGuard({
 
 **显示规则**: 仅在 ≥80% 时显示于 Dashboard 主区域顶部
 
-| 阈值 | 背景色 | 图标 | 提示内容 |
-|------|-------|------|---------|
-| 80%-99% | `bg-amber-50 border-amber-200` | ⚡ Zap (amber) | "2 projects remaining. Upgrade for more" |
-| 100% | `bg-red-50 border-red-200` | ⚠️ AlertTriangle (red) | "Project limit reached. Upgrade your plan" |
+| 使用百分比 | 背景色 | 图标 | 提示内容 | 位置 |
+|-----------|-------|------|---------|------|
+| 0%-49% | 不显示 | - | - | - |
+| 50%-79% | 不显示 | - | - | 仅 QuotaBar 进度条可见 |
+| 80%-99% | `bg-amber-50 border-amber-200` | ⚡ Zap (amber) | "2 projects remaining. Upgrade for more" | Dashboard 顶部 |
+| 100% | `bg-red-50 border-red-200` | ⚠️ AlertTriangle (red) | "Project limit reached. Upgrade your plan" | Dashboard 顶部 |
+
+> **设计决策**: 50%-79% 区间不显示顶部警告条是**有意为之**：
+> - 避免过早打扰用户，保持低干扰体验
+> - 用户可通过侧边栏 QuotaBar 随时了解使用情况
+> - 80% 是业界常用的警告阈值 (AWS、Google Drive 等)
 
 ---
 
@@ -301,6 +308,91 @@ const getRecommendedPlan = (feature: FeatureKey): 't2' | 't3' => {
   <StarterPlanCard />
   <ProPlanCard />
 </div>
+```
+
+### 5.4 功能触发映射表 (完整)
+
+> 定义每个锁定功能触发 UpgradeModal 时的推荐 Plan 和提示文案
+
+#### 5.4.1 配额类触发 (Quota)
+
+| 触发功能 Key | 触发场景 | 推荐 Plan | Modal 标题 | 提示文案 |
+|-------------|---------|-----------|-----------|---------|
+| `quota.project` | 项目数量达到上限时点击新建 | t2 | Create More Projects | Your current plan allows {max} projects. Upgrade to create unlimited projects. |
+| `quota.folder` | 文件夹数量达到上限时点击新建 | t2 | Create More Folders | Your current plan allows {max} folders. Upgrade to organize with more folders. |
+| `quota.workspace` | Workspace 达上限时点击创建 | t3 | Multiple Workspaces | Create unlimited workspaces to organize your teams and projects. |
+| `quota.custom_asset` | 自定义素材达上限时点击上传 | t3 | Upload Custom Assets | Upload unlimited custom images, icons, and graphics. |
+
+#### 5.4.2 功能类触发 (Feature) - 推荐 Starter (t2)
+
+| 触发功能 Key | 触发场景 | 推荐 Plan | Modal 标题 | 提示文案 |
+|-------------|---------|-----------|-----------|---------|
+| `ai_features` | 点击 AI 生成素材/Page 时 | t2 | AI-Powered Creation | Generate unique images and pages with AI. |
+| `pdf_export` | 游客点击 PDF 下载时 | t2 | Export Your Work | Download your decodables as PDF files. |
+| `pdf_print` | 游客点击 PDF 打印时 | t2 | Print Your Work | Print your decodables directly from the editor. |
+| `browse_marketplace` | t1 过期后访问 Marketplace | t2 | Explore Marketplace | Browse and purchase templates, assets, and more. |
+| `purchase_marketplace` | 点击购买商城商品时 | t2 | Purchase from Marketplace | Buy ready-made templates and assets to accelerate your projects. |
+| `publish_free` | 点击发布免费项目/素材时 | t2 | Share Your Creations | Publish your work to the marketplace for free. |
+
+#### 5.4.3 功能类触发 (Feature) - 推荐 Pro (t3)
+
+| 触发功能 Key | 触发场景 | 推荐 Plan | Modal 标题 | 提示文案 |
+|-------------|---------|-----------|-----------|---------|
+| `smart_scan` | 点击 Smart Scan OCR 时 | t3 | Smart Scan OCR | Convert images to editable pages with AI-powered text recognition. |
+| `zip_export` | 点击 ZIP 导出时 | t3 | Export as ZIP | Download PDF with all page images in a convenient ZIP file. |
+| `clipboard_paste` | Ctrl+V 或右键粘贴时 | t3 | Clipboard Paste | Paste images directly from your clipboard into the editor. |
+| `can_upload_custom_assets` | t2 用户点击上传素材时 | t3 | Custom Asset Library | Build your personal asset library with unlimited uploads. |
+| `publish_paid` | 点击发布付费项目/素材时 | t3 | Sell Your Creations | Publish paid content to the marketplace and earn credits. |
+| `recover_deleted` | 点击从回收站恢复时 | t3 | Recover Deleted Items | Restore accidentally deleted projects, folders, and assets within 30 days. |
+| `can_invite_members` | 点击邀请成员时 | t3 | Team Collaboration | Invite team members to collaborate on workspaces. |
+
+#### 5.4.4 触发代码示例
+
+```tsx
+// 使用统一的 openUpgradeModal 函数
+import { useModalStore } from '@/lib/useModalStore';
+
+function MyComponent() {
+  const { openUpgradeModal } = useModalStore();
+
+  const handleLockedFeature = () => {
+    // 传入功能 Key，Modal 自动显示对应推荐 Plan 和文案
+    openUpgradeModal('smart_scan');
+  };
+
+  return (
+    <Button onClick={handleLockedFeature}>
+      Smart Scan
+      <Lock className="w-3.5 h-3.5 text-amber-500" />
+    </Button>
+  );
+}
+```
+
+#### 5.4.5 Modal 内部逻辑
+
+```tsx
+// UpgradeModal 内部根据 featureKey 确定推荐 Plan
+const FEATURE_PLAN_MAP: Record<string, { plan: 't2' | 't3'; title: string; description: string }> = {
+  'quota.project': { plan: 't2', title: 'Create More Projects', description: 'Your current plan allows...' },
+  'smart_scan': { plan: 't3', title: 'Smart Scan OCR', description: 'Convert images to...' },
+  // ... 其他映射
+};
+
+function UpgradeModal({ featureKey }: { featureKey: string }) {
+  const config = FEATURE_PLAN_MAP[featureKey] ?? { plan: 't2', title: 'Upgrade', description: '' };
+
+  return (
+    <Dialog>
+      <DialogHeader>
+        <DialogTitle>{config.title}</DialogTitle>
+        <DialogDescription>{config.description}</DialogDescription>
+      </DialogHeader>
+      {/* Plan 卡片，高亮推荐的 Plan */}
+      <PlanCards recommendedPlan={config.plan} />
+    </Dialog>
+  );
+}
 ```
 
 ---
@@ -1212,6 +1304,7 @@ export function GracePeriodBanner({
 | v1.3 | 2026-02-04 | 全面审计修复：PDF 打印/下载注释错误修正；t2 maxCustomAssets 改为 50/Account |
 | v1.4 | 2026-02-04 | **边界场景 UI 规范**：(1) 试用期状态提醒 (TrialStatusBanner + TrialExpiredModal)；(2) 编辑器只读模式 (EditorReadOnlyOverlay + 操作限制表)；(3) Tier 降级资源锁定 (LockedProjectCard + GracePeriodBanner) |
 | v1.5 | 2026-02-04 | 添加待实现清单：7 个边界场景组件、3 个配额组件、3 个 Hooks |
+| v1.6 | 2026-02-04 | **配额警告规则完善 + UpgradeModal 触发映射表**：(1) 补充 0%-49%、50%-79% 区间的显示规则及设计决策说明；(2) 新增 §5.4 功能触发映射表，定义 4 个配额类 + 6 个 Starter 功能 + 7 个 Pro 功能的完整触发映射 |
 
 ---
 

@@ -1453,6 +1453,282 @@ COMMENT ON FUNCTION update_webhook_result IS 'Update Stripe webhook processing r
 
 
 -- ============================================================================
+-- Entitlement 系统表 (2026-02-04 审计修复)
+-- ============================================================================
+-- 参考文档:
+--   - docs/shared/entitlement/15-credits-lifecycle.md
+--   - docs/shared/entitlement/02-tier-config.md
+--   - docs/shared/entitlement/08-user-groups.md
+--   - docs/shared/entitlement/10-workspace-override.md
+
+-- ----------------------------------------------------------------------------
+-- 1. credit_pools - 积分池表 (二维模型核心)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS credit_pools (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+
+    -- 来源类型
+    source_type VARCHAR(30) NOT NULL CHECK (source_type IN (
+        'subscription',      -- 订阅发放
+        'purchase',          -- 用户购买
+        'bonus_signup',      -- 注册赠送
+        'bonus_referral',    -- 邀请奖励
+        'bonus_campaign',    -- 营销活动
+        'compensation',      -- 客服补偿
+        'earning'            -- 销售收入
+    )),
+
+    -- 余额与有效期
+    balance INT NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    expires_at TIMESTAMPTZ,  -- NULL = 永久有效
+
+    -- 来源追踪
+    source_id TEXT,          -- 关联的订单/活动/交易 ID
+    description TEXT,        -- 描述信息
+
+    -- 元数据
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 索引：支持 FEFO 扣费查询
+CREATE INDEX IF NOT EXISTS idx_credit_pools_user_expiry
+ON credit_pools(user_id, COALESCE(expires_at, '9999-12-31'::timestamptz), source_type);
+
+-- 索引：按用户查询
+CREATE INDEX IF NOT EXISTS idx_credit_pools_user ON credit_pools(user_id);
+
+-- 索引：过期积分清理
+CREATE INDEX IF NOT EXISTS idx_credit_pools_expires ON credit_pools(expires_at)
+WHERE expires_at IS NOT NULL AND balance > 0;
+
+COMMENT ON TABLE credit_pools IS '积分池表：支持二维模型（来源类型 + 有效期），FEFO 扣费策略';
+
+
+-- ----------------------------------------------------------------------------
+-- 2. user_feature_overrides - 用户级权限覆盖表
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_feature_overrides (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    feature_key TEXT NOT NULL,           -- 功能 Key, 如 'smart_scan', 'ai_features'
+    override_value TEXT NOT NULL CHECK (override_value IN ('true', 'false', 'trial')),
+    reason TEXT,                         -- 覆盖原因 (运营记录)
+    expires_at TIMESTAMPTZ,              -- 过期时间 (可选, NULL=永久)
+    created_by UUID,                     -- 操作人 (Admin user_id)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, feature_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_feature_overrides_user_id ON user_feature_overrides(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_feature_overrides_expires ON user_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
+
+COMMENT ON TABLE user_feature_overrides IS '用户级权限覆盖：Admin 为特定用户开通/关闭功能';
+
+
+-- ----------------------------------------------------------------------------
+-- 3. user_feature_override_logs - 用户权限覆盖审计日志
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_feature_override_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    override_id UUID REFERENCES user_feature_overrides(id) ON DELETE SET NULL,
+    user_id TEXT NOT NULL,                 -- 被操作用户
+    feature_key TEXT NOT NULL,             -- 功能 Key
+    action TEXT NOT NULL CHECK (action IN ('created', 'updated', 'deleted', 'expired')),
+    old_value TEXT,                        -- 变更前的值
+    new_value TEXT,                        -- 变更后的值
+    reason TEXT,                           -- 变更原因
+    changed_by TEXT NOT NULL,              -- 操作人 (Admin user_id 或 'system')
+    changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ufo_logs_user_id ON user_feature_override_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_ufo_logs_changed_at ON user_feature_override_logs(changed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ufo_logs_feature_key ON user_feature_override_logs(feature_key);
+
+COMMENT ON TABLE user_feature_override_logs IS '用户权限覆盖审计日志';
+
+
+-- ----------------------------------------------------------------------------
+-- 4. user_groups - 用户组表
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_groups (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_key TEXT NOT NULL UNIQUE,          -- 唯一标识: 'kol', 'beta_testers', 'enterprise_pilot'
+    group_name TEXT NOT NULL,                -- 显示名称: 'KOL 用户组', 'Beta 测试组'
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_by TEXT NOT NULL,                -- 创建人 (Admin user_id)
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_groups_key ON user_groups(group_key);
+
+COMMENT ON TABLE user_groups IS '用户组表：用于批量权限管理';
+
+
+-- ----------------------------------------------------------------------------
+-- 5. user_group_members - 用户组成员表
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_group_members (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    added_by UUID NOT NULL,                  -- 添加人 (Admin user_id)
+    added_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,                  -- 成员过期时间 (可选)
+    UNIQUE(group_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_group_members_user ON user_group_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_group_members_group ON user_group_members(group_id);
+CREATE INDEX IF NOT EXISTS idx_user_group_members_expires ON user_group_members(expires_at) WHERE expires_at IS NOT NULL;
+
+COMMENT ON TABLE user_group_members IS '用户组成员表';
+
+
+-- ----------------------------------------------------------------------------
+-- 6. group_feature_overrides - 组级权限覆盖表
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS group_feature_overrides (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
+    feature_key TEXT NOT NULL,
+    override_value TEXT NOT NULL CHECK (override_value IN ('true', 'false', 'trial')),
+    reason TEXT,
+    expires_at TIMESTAMPTZ,                  -- 权限过期时间 (可选)
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(group_id, feature_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_feature_overrides_group ON group_feature_overrides(group_id);
+CREATE INDEX IF NOT EXISTS idx_group_feature_overrides_expires ON group_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
+
+COMMENT ON TABLE group_feature_overrides IS '组级权限覆盖表';
+
+
+-- ----------------------------------------------------------------------------
+-- 7. group_feature_override_logs - 组级权限覆盖审计日志
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS group_feature_override_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    override_id UUID REFERENCES group_feature_overrides(id) ON DELETE SET NULL,
+    group_id UUID NOT NULL,
+    feature_key TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('created', 'updated', 'deleted', 'expired')),
+    old_value TEXT,
+    new_value TEXT,
+    reason TEXT,
+    changed_by TEXT NOT NULL,
+    changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gfo_logs_group_id ON group_feature_override_logs(group_id);
+CREATE INDEX IF NOT EXISTS idx_gfo_logs_changed_at ON group_feature_override_logs(changed_at DESC);
+
+COMMENT ON TABLE group_feature_override_logs IS '组级权限覆盖审计日志';
+
+
+-- ----------------------------------------------------------------------------
+-- 8. workspace_feature_overrides - Workspace 权限覆盖表
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS workspace_feature_overrides (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    feature_key TEXT NOT NULL,
+    override_value TEXT NOT NULL CHECK (override_value IN ('true', 'false', 'trial')),
+    reason TEXT,                             -- 如 'Enterprise 试用', 'Team Plan 权益'
+    expires_at TIMESTAMPTZ,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(workspace_id, feature_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_feature_overrides_workspace ON workspace_feature_overrides(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_feature_overrides_expires ON workspace_feature_overrides(expires_at) WHERE expires_at IS NOT NULL;
+
+COMMENT ON TABLE workspace_feature_overrides IS 'Workspace 级权限覆盖：支持 Team Plan 多租户场景';
+
+
+-- ----------------------------------------------------------------------------
+-- 9. workspace_feature_override_logs - Workspace 权限覆盖审计日志
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS workspace_feature_override_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    override_id UUID REFERENCES workspace_feature_overrides(id) ON DELETE SET NULL,
+    workspace_id UUID NOT NULL,
+    feature_key TEXT NOT NULL,
+    action TEXT NOT NULL CHECK (action IN ('created', 'updated', 'deleted', 'expired')),
+    old_value TEXT,
+    new_value TEXT,
+    reason TEXT,
+    changed_by TEXT NOT NULL,
+    changed_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_wfo_logs_workspace_id ON workspace_feature_override_logs(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_wfo_logs_changed_at ON workspace_feature_override_logs(changed_at DESC);
+
+COMMENT ON TABLE workspace_feature_override_logs IS 'Workspace 权限覆盖审计日志';
+
+
+-- ============================================================================
+-- Entitlement RLS 策略
+-- ============================================================================
+
+-- credit_pools RLS
+ALTER TABLE credit_pools ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY credit_pools_user_select ON credit_pools
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY credit_pools_service_all ON credit_pools
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- user_feature_overrides RLS
+ALTER TABLE user_feature_overrides ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY user_feature_overrides_user_select ON user_feature_overrides
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY user_feature_overrides_service_all ON user_feature_overrides
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- user_groups RLS (Admin 可见)
+ALTER TABLE user_groups ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY user_groups_service_all ON user_groups
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- user_group_members RLS
+ALTER TABLE user_group_members ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY user_group_members_user_select ON user_group_members
+    FOR SELECT USING (user_id = auth.uid());
+
+CREATE POLICY user_group_members_service_all ON user_group_members
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- group_feature_overrides RLS (Admin 可见)
+ALTER TABLE group_feature_overrides ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY group_feature_overrides_service_all ON group_feature_overrides
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- workspace_feature_overrides RLS
+ALTER TABLE workspace_feature_overrides ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY workspace_feature_overrides_service_all ON workspace_feature_overrides
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;

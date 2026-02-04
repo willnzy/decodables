@@ -1,9 +1,10 @@
 # 用户权限与功能控制系统设计
 
-> **版本**: v4.2
+> **版本**: v4.3
 > **日期**: 2026-02-04
 > **状态**: 设计完成
 > **架构**: Entitlement Service + Feature Flag Service + Merge Layer
+> **实现状态**: 🔴 部分待实现
 
 ---
 
@@ -823,6 +824,48 @@ const isTrialExpired = isFree && !isWithinTrialPeriod?.();
 | v4.0 | 2026-02-03 | 初始版本：从 002-entitlement 文档重组 |
 | v4.1 | 2026-02-03 | 补充遗漏：决策记录 (9项)、v2.2 审计、风险缓解 (9项)、system_configs SQL、身份层级 |
 | v4.2 | 2026-02-04 | 全面审计修复：t1 JSON 配置 (platform_assets/vector_tools/freehand_tools 改为 true)；游客 Marketplace 访问权限改为 ❌；统一 user_feature_overrides 表结构 (使用 override_value) |
+| v4.3 | 2026-02-04 | 添加待实现清单 |
+
+---
+
+## 十四、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 14.1 数据库层 (🔴 P0)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **创建 `subscriptions` 表** | 订阅信息表，管理用户订阅状态 | 🔴 P0 |
+| 2 | **创建 `user_feature_overrides` 表** | 运营授权表 (参见 §3.5) | 🔴 P0 |
+| 3 | **将 `tier.t1/t2/t3.features` JSON 入库** | system_configs seed 数据 (参见 §10.1) | 🔴 P0 |
+| 4 | **统一 `trial.default_days` 配置** | 删除废弃 key，统一为 7 天 | 🔴 P0 |
+
+### 14.2 后端 Service 层 (🔴 P0)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `EntitlementService` 增强 | 从 TierService 增强，添加 override 机制 |
+| 2 | `UserFeatureService` Merge 层 | 合并 Entitlement 和 Flag 结果 |
+| 3 | `OverrideRepository` | 运营授权数据访问 |
+| 4 | `GET /api/v2/user/features` API | 核心 API (参见 §4.1) |
+
+### 14.3 API 层 Tier 校验 (🔴 P0)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `POST /tools/ocr` 添加校验 | `require_tier_feature('smart_scan')` |
+| 2 | `POST /export/zip` 添加校验 | `require_tier_feature('zip_export')` |
+| 3 | `GET /assets?scope=all` 添加校验 | `require_tier_feature('history_assets')` |
+
+### 14.4 前端基础设施 (🟡 P1)
+
+| # | 待实现项 | 说明 |
+|---|---------|------|
+| 1 | `useEntitlementStore` | 独立 Zustand Store (参见 §5.1) |
+| 2 | `useFeatureAccess` Hook | 功能访问检查 (参见 §5.2) |
+| 3 | `useQuotaGuard` Hook | 配额检查 (参见 §5.3) |
+| 4 | `FeatureGate` 组件 | 功能门控组件 |
 
 ---
 

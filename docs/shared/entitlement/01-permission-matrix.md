@@ -61,21 +61,27 @@
 | 3 | 文件夹最大数量 | `quota.max_folders` | 0 | 1 | 1 | 20/Account | 200/Account | New Folder按钮控制 |
 | 4 | 项目最大数量 | `quota.max_projects` | 0 | 1 | 1 | 10/Account | unlimited | 新建/复制项目按钮控制 |
 | 5 | 自定义素材上传 | `feature.can_upload_custom_assets` | NO | YES | NO | NO | YES | 上传素材入口按钮控制 |
-| 6 | 自定义素材最大数量 | `quota.max_custom_assets` | 0 | 10 | 0 | 50/Account | unlimited | 上传素材入口按钮控制 |
+| 6 | 自定义素材最大数量 | `quota.max_custom_assets` | 0 | 10 | 0 | 0 | unlimited | 上传素材入口按钮控制 |
 
 ### 2.2 编辑器功能 (Editor)
 
 | # | 功能 | Key | 游客 | t1 试用期内 | t1 超出试用期 | t2 | t3 | 控制方式 |
 |---|------|-----|:---:|:---:|:---:|:---:|:---:|---------|
-| 7 | 使用平台素材 | `feature.platform_assets` | YES | YES | YES | YES | YES | 能进入到项目编辑页面,就都可见可用 |
-| 8 | 矢量图工具 | `feature.vector_tools` | YES | YES | YES | YES | YES | 能进入到项目编辑页面,就都可见可用 |
-| 9 | 画笔工具 | `feature.freehand_tools` | YES | YES | YES | YES | YES | 能进入到项目编辑页面,就都可见可用 |
+| 7 | 使用平台素材 | `feature.platform_assets` | YES | YES | YES | YES | YES | 当前全开放; 保留 FeatureKey 供运维关闭 |
+| 8 | 矢量图工具 | `feature.vector_tools` | YES | YES | YES | YES | YES | 当前全开放; 保留 FeatureKey 供运维关闭 |
+| 9 | 画笔工具 | `feature.freehand_tools` | YES | YES | YES | YES | YES | 当前全开放; 保留 FeatureKey 供运维关闭 |
 | 10 | Page 中剪贴板粘贴 | `feature.clipboard_paste` | NO | YES | NO | NO | YES | 右键菜单+快捷键控制 |
 | 11 | AI 生成素材 | `feature.ai_generate_assets` | NO | YES | NO | YES | YES | AI入口按钮控制 |
 | 12 | AI 生成 Page | `feature.ai_generate_page` | NO | YES | NO | YES | YES | AI入口按钮控制 |
 | 13 | 图片识别并生成 Page (Smart Scan) | `feature.smart_scan` | NO | YES | NO | NO | YES | Smart Scan入口控制 |
 
-> **注**: 第 7-9 行当前配置为所有用户可用 (包括游客)，能进入编辑页面即可使用。
+> **注 (第 7-9 行说明)**:
+> - **当前策略**: 平台素材、矢量图工具、画笔工具对所有用户完全开放 (包括游客)，能进入编辑页面即可使用
+> - **保留 FeatureKey 的原因**:
+>   1. 紧急运维 - 功能出现严重 Bug 时可全局关闭
+>   2. 灰度发布 - 新版本矢量图工具可先对部分用户开放
+>   3. AB 实验 - 测试关闭某功能对用户行为的影响
+> - **实现方式**: 数据库配置 `feature.{key}.enabled` 默认为 `true`，前端无需显式检查 (仅需处理 `false` 的紧急关闭情况)
 
 ### 2.3 导出功能 (Export)
 
