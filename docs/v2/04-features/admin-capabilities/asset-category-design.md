@@ -10,7 +10,7 @@
  **适用范围**: shared  
  **source_repo**: both  
  **sync_required**: yes  
- **来源/依据**: `decodables-fe/docs/shared/asset-category-design.md`, `decodables/docs/shared/asset-category-design.md`
+**来源/依据**: `decodables-fe/app/admin/content/`, `decodables-fe/app/admin/content/_lib/api.ts`, `decodables-fe/app/admin/content/_lib/types.ts`, `decodables/api/admin/asset_categories.py`
  
  ---
  
@@ -25,19 +25,45 @@
 - 必须与覆盖矩阵保持一致
 
 ## 目标
- 
- - 统一素材分类模型与层级规则
- - 约束分类增删改流程
- - 支持前端展示与检索
- 
+
+- 统一素材分类模型与层级规则
+- 约束分类的增删改与层级调整
+- 支持前端展示、检索与资源绑定
+
+## 能力清单
+
+- 分类列表/树形结构
+- 分类创建/更新/移动/删除
+- 分类资源绑定与查询
+
+## 关键流程
+
+- 创建分类 → 写入层级路径 → 展示树
+- 调整层级 → 更新路径 → 资源继承/展示
+- 删除分类 → 校验子节点 → 级联或拒绝
+
+## 规则与护栏
+
+- slug 仅允许小写字母、数字、`-`、`_`
+- asset_type 限定在固定集合
+- min_tier 限定 `t1`-`t3`
+- 删除支持级联（cascade）与阻断校验
+
 ## 分类结构
- 
- - 树形层级与编号策略
- - 叶子节点与可用性规则
- 
-## 维护流程
- 
- - 创建 → 审核 → 发布 → 调整
+
+- 树形层级与路径（path/level）
+- 叶子节点与可用性（is_visible/is_featured）
+- 展示顺序（display_order）
+
+## 接口清单（Admin）
+
+- `GET /api/v2/admin/asset-categories`
+- `GET /api/v2/admin/asset-categories/tree`
+- `POST /api/v2/admin/asset-categories`
+- `PATCH /api/v2/admin/asset-categories/{slug}`
+- `PUT /api/v2/admin/asset-categories/{slug}/move`
+- `DELETE /api/v2/admin/asset-categories/{slug}`
+- `GET /api/v2/admin/asset-categories/{slug}/resources`
 
 ## 影响范围
 
