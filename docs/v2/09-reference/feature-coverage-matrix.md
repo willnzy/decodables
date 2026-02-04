@@ -522,6 +522,6 @@
 
 | 缺口项 | 发现来源 | 处理策略 |
 |--------|----------|----------|
-| `decodables-fe/docs/shared/` 与 `decodables/docs/shared/` 未映射 | 旧文档索引 | 建立 shared 映射清单 |
+| `decodables-fe/docs/shared/` 与 `decodables/docs/shared/` 未映射 | 旧文档索引 | 已建立 shared 映射清单（完成） |
 | `user-capabilities/*` 对应 v2 功能文档未全量建立 | 覆盖矩阵 | 按能力树补齐文档 |
 | `admin-capabilities/*` 对应 v2 功能文档未全量建立 | 覆盖矩阵 | 按能力树补齐文档 |
