@@ -6,7 +6,21 @@
 
 ## 目录说明
 
-- （待补充）Admin 页面清单与体验文档
+- Admin Dashboard
+  - `admin-dashboard/admin-dashboard.md`: 管理台首页体验
+  - `admin-dashboard/users.md`: 用户管理体验
+  - `admin-dashboard/moderation.md`: 审核与举报体验
+  - `admin-dashboard/operations.md`: 运维与系统操作体验
+- Config Management
+  - `config-management/configs.md`: 配置管理体验
+- Content Management
+  - `content-management/content.md`: 内容管理体验
+  - `content-management/articles.md`: 文章管理体验
+  - `content-management/themes.md`: 主题管理体验
+- Marketing Ops
+  - `marketing-ops/marketing.md`: 营销运营体验
+- Analytics Ops
+  - `analytics-ops/analytics.md`: 数据分析体验
 
 ## 归属规则
 
