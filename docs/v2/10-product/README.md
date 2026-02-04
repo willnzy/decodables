@@ -12,8 +12,8 @@
 
 ## 目录说明
 
-- （待补充）User 体验文档索引
-- （待补充）Admin 体验文档索引
+- `user/README.md`: User 体验索引
+- `admin/README.md`: Admin 体验索引
 
 ## 层级规则
 
