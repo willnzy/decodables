@@ -4,17 +4,17 @@
 
 **版本**: v1.0
 **创建日期**: 2026-02-04
-**来源**: entitlement-permission-matrix.md 第七章 7.1-7.2 节
+**来源**: 基于 01-permission-matrix.md + 03-system-design.md 定义
 
 ---
 
 ## 相关文档
 
-- [01-overview.md](./01-overview.md) - 系统概述与核心概念
-- [02-tier-features.md](./02-tier-features.md) - Tier 权益与功能配置
-- [03-trial-system.md](./03-trial-system.md) - 试用期系统设计
-- [04-database-schema.md](./04-database-schema.md) - 数据库 Schema 设计
-- [05-api-implementation.md](./05-api-implementation.md) - API 实现方案
+- [01-permission-matrix.md](./01-permission-matrix.md) - 功能权限矩阵 (**唯一数据源**)
+- [02-tier-config.md](./02-tier-config.md) - Tier JSON 配置
+- [03-system-design.md](./03-system-design.md) - 系统架构总览
+- [04-feature-flag-engine.md](./04-feature-flag-engine.md) - Feature Flag 评估引擎
+- [05-ui-spec.md](./05-ui-spec.md) - UI 交互规范
 
 ---
 

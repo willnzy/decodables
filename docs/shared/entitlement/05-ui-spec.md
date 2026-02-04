@@ -11,9 +11,9 @@
 
 | 文档 | 说明 |
 |------|------|
-| [entitlement-system-design.md](./entitlement-system-design.md) | 系统架构总览 |
-| [entitlement-permission-matrix.md](./entitlement-permission-matrix.md) | 功能权限矩阵 (**唯一数据源**) |
-| [feature-flag-engine.md](./feature-flag-engine.md) | Feature Flag 评估引擎 |
+| [03-system-design.md](./03-system-design.md) | 系统架构总览 |
+| [01-permission-matrix.md](./01-permission-matrix.md) | 功能权限矩阵 (**唯一数据源**) |
+| [04-feature-flag-engine.md](./04-feature-flag-engine.md) | Feature Flag 评估引擎 |
 
 ---
 

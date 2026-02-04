@@ -4,7 +4,7 @@
 
 **版本**: v1.0
 **创建日期**: 2026-02-04
-**来源**: 从 `entitlement-permission-matrix.md` 第 7.3 节提取
+**来源**: 基于 01-permission-matrix.md 的 Tier 继承规则
 
 ---
 
@@ -185,8 +185,8 @@ verifyTierInheritance();
 
 ## 相关文档
 
-- [00-overview.md](./00-overview.md) - 权限系统概述
-- [01-tier-features.md](./01-tier-features.md) - Tier 功能权限矩阵
-- [02-trial-system.md](./02-trial-system.md) - 试用机制设计
-- [06-admin-interface.md](./06-admin-interface.md) - 管理员权限配置界面
-- [../TIER-PERMISSIONS.md](../TIER-PERMISSIONS.md) - 完整权益汇总表
+- [README.md](./README.md) - 文档导航索引
+- [01-permission-matrix.md](./01-permission-matrix.md) - 功能权限矩阵 (**唯一数据源**)
+- [02-tier-config.md](./02-tier-config.md) - Tier JSON 配置
+- [11-trial-expiration.md](./11-trial-expiration.md) - 试用期过期处理
+- [../tier-permissions.md](../tier-permissions.md) - 完整权益汇总表

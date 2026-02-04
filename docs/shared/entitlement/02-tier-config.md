@@ -1,6 +1,6 @@
 # Tier 配置详情
 
-> 版本: v1.0 | 更新: 2026-02-04 | 来源: entitlement-permission-matrix.md 第四章、第六章
+> 版本: v1.0 | 更新: 2026-02-04 | 来源: 基于 01-permission-matrix.md 权限矩阵定义
 
 ## 相关文档
 

@@ -37,9 +37,9 @@
 
 | 文档 | 说明 |
 |------|------|
-| [entitlement-permission-matrix.md](./entitlement-permission-matrix.md) | 功能权限矩阵 (**唯一数据源**) |
-| [feature-flag-engine.md](./feature-flag-engine.md) | Feature Flag 评估引擎 (数据库+代码实现) |
-| [entitlement-ui-spec.md](./entitlement-ui-spec.md) | 前端 UI 交互规范 |
+| [01-permission-matrix.md](./01-permission-matrix.md) | 功能权限矩阵 (**唯一数据源**) |
+| [04-feature-flag-engine.md](./04-feature-flag-engine.md) | Feature Flag 评估引擎 (数据库+代码实现) |
+| [05-ui-spec.md](./05-ui-spec.md) | 前端 UI 交互规范 |
 
 ### 1.4 文档关系图
 

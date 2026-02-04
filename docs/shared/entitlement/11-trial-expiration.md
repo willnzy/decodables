@@ -1,7 +1,7 @@
 # t1 试用期过期处理
 
 > **版本**: v1.0
-> **提取自**: entitlement-permission-matrix.md 第八章 8.1 节
+> **提取自**: 基于 01-permission-matrix.md 试用期定义
 > **最后更新**: 2026-02-04
 
 ## 概述

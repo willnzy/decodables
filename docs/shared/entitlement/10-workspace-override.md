@@ -4,7 +4,7 @@
 
 **版本**: v1.0
 **创建日期**: 2026-02-04
-**来源**: 从 entitlement-permission-matrix.md 第 7.6 节提取
+**来源**: 基于 03-system-design.md Workspace 权限定义
 
 ---
 
