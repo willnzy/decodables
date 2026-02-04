@@ -10,7 +10,7 @@
  **适用范围**: shared  
  **source_repo**: both  
  **sync_required**: yes  
- **来源/依据**: `decodables-fe/docs/shared/analytics-system-design.md`, `decodables/docs/shared/analytics-system-design.md`
+**来源/依据**: `decodables-fe/app/admin/analytics/`, `decodables-fe/app/admin/analytics/_lib/api.ts`, `decodables/api/admin/stats.py`, `decodables/api/admin/metrics.py`, `decodables/api/admin/events.py`, `decodables/api/admin/ai.py`
  
  ---
  
@@ -25,20 +25,70 @@
 - 必须与覆盖矩阵保持一致
 
 ## 目标
- 
- - 明确分析系统的能力范围与边界
- - 统一指标、维度与时间粒度
- - 约束数据一致性与审计要求
- 
+
+- 统一 Stats / Metrics / Events / AI 的分析入口
+- 明确统计口径、时间维度与聚合策略
+- 支持趋势、洞察与运营决策
+
 ## 能力清单
- 
- - 指标统计与趋势分析
- - 报表与导出
- - AI 洞察与建议
- 
+
+- Stats：Dashboard KPI、增长/收入/积分/转化漏斗
+- Metrics：DAU、留存、错误、漏斗、日/月统计
+- Events：事件列表、聚合统计、聚合任务触发
+- AI：洞察、建议、行为分析、报告生成
+
 ## 关键流程
- 
- - 数据采集 → 聚合计算 → 展示与导出
+
+- 指标查询 → 过滤/聚合 → 展示
+- 事件聚合 → 统计产出 → 结果回显
+- AI 洞察 → 建议/报告 → 运营决策
+
+## 规则与护栏
+
+- 统一分页：`offset` + `limit`
+- 日期格式与 period/group_by 校验
+- 管理员权限与接口限流
+
+## 接口清单（Admin）
+
+- `GET /api/v2/admin/stats/dashboard`
+- `GET /api/v2/admin/stats/user-growth`
+- `GET /api/v2/admin/stats/revenue`
+- `GET /api/v2/admin/stats/projects`
+- `GET /api/v2/admin/stats/credits`
+- `GET /api/v2/admin/stats/tier-distribution`
+- `GET /api/v2/admin/stats/conversion-funnel`
+- `GET /api/v2/admin/stats/exports`
+- `GET /api/v2/admin/stats/assets`
+- `GET /api/v2/admin/stats/tier-activity`
+- `GET /api/v2/admin/stats/subscription-events`
+- `GET /api/v2/admin/stats/page-views`
+- `GET /api/v2/admin/stats/project-details`
+- `GET /api/v2/admin/stats/returning-users`
+- `GET /api/v2/admin/stats/tier-trend`
+- `GET /api/v2/admin/stats/tier-conversion`
+- `GET /api/v2/admin/stats/performance`
+- `GET /api/v2/admin/stats/user-distribution`
+
+- `GET /api/v2/admin/metrics/daily`
+- `GET /api/v2/admin/metrics/monthly`
+- `GET /api/v2/admin/metrics/retention`
+- `GET /api/v2/admin/metrics/funnel`
+- `GET /api/v2/admin/metrics/errors`
+- `GET /api/v2/admin/metrics/dau-trend`
+- `POST /api/v2/admin/metrics/refresh`
+
+- `GET /api/v2/admin/events/events`
+- `GET /api/v2/admin/events/events/stats`
+- `GET /api/v2/admin/events/aggregated/{stat_type}`
+- `GET /api/v2/admin/events/aggregated/{stat_type}/range`
+- `POST /api/v2/admin/events/aggregation/run`
+
+- `GET /api/v2/admin/ai/insights`
+- `GET /api/v2/admin/ai/recommendations`
+- `GET /api/v2/admin/ai/behavior-analysis`
+- `POST /api/v2/admin/ai/generate-report`
+- `GET /api/v2/admin/ai/quick-insights`
 
 ## 影响范围
 
