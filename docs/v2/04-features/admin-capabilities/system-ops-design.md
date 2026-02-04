@@ -3,7 +3,7 @@
 > 系统配置、日志、任务与通知等运维能力的系统设计与边界说明。
 
 **状态**: draft  
-**版本**: 0.1.0  
+**版本**: 0.2.0  
 **版本日期**: 2026-02-04  
 **最后复核**: 2026-02-04  
 **负责人**: Docs Working Group  
@@ -18,6 +18,7 @@
 
 - 需要统一系统配置、日志与任务监控入口
 - 需要集中处理通知与 Webhooks 重试
+- 需要对高风险操作提供双重确认与审计
 
 ## 设计约束（强制）
 
@@ -56,6 +57,43 @@
 - 缓存 key 与 pattern 正则校验
 - 清空缓存两步确认（/confirm → /clear-all）
 - 管理员权限与全接口限流
+- 任务名白名单校验（hourly/daily/all/cleanup/retention）
+- 日志日期格式校验（YYYY-MM-DD 或 ISO）
+- Webhook 重试为高成本操作（10/hour）
+
+## 状态与类型
+
+- 配置分组：`tier_pricing` / `credits` / `features` / `limits` / `ai` / `notifications` / `maintenance`
+- 通知类型：`info` / `warning` / `error` / `success` / `announcement`
+- 通知渠道：`in_app` / `email` / `push` / `all`
+- 通知状态：`draft` / `scheduled` / `sent` / `failed`
+- Webhook 来源：`stripe` / `clerk` / `fal` / `other`
+- Webhook 状态：`pending` / `processing` / `completed` / `failed` / `retrying`
+- 缓存类型：`redis` / `memory` / `cdn`
+
+## 数据结构
+
+- SystemConfig：`key` / `value` / `value_type` / `config_group` / `description` / `is_active`
+- ConfigHistory：`old_value` / `new_value` / `changed_by` / `changed_at`
+- CacheStats：`total_keys` / `memory_used` / `hit_rate` / `miss_rate`
+- Notification：`title` / `message` / `type` / `channel` / `status` / `target_users` / `target_tiers`
+- FailedWebhook：`event_type` / `retry_count` / `error_message` / `next_retry_at`
+- UserCreationStats：`today` / `this_week` / `change_percent` / `hourly_breakdown`
+
+## 前端交互要点
+
+- 面板 Tab 驱动：`configs` / `cache` / `notifications` / `webhooks` / `monitoring`
+- 高危操作（清空缓存、重试 Webhook）需二次确认
+- 通知模板 CRUD 与发送同屏操作
+- 用户创建监控含趋势、事件与健康态提示
+
+## 实现边界（现状）
+
+- 前端支持配置批量更新、重置、导出接口，后端尚未实现
+- 前端支持读取单个配置与历史记录，后端仅提供列表与审计汇总
+- 前端缓存支持读取缓存值与按 key 删除，后端仅提供删除与列表
+- 前端支持 webhook 单条重试与 retry-all，后端仅支持全量 retry
+- 后端存在通知 legacy 接口（broadcast/send/batch/stats/history），前端未接入
 
 ## 接口清单（Admin）
 
@@ -114,3 +152,4 @@
 | 日期 | 版本 | 变更内容 | 负责人 |
 |------|------|----------|--------|
 | 2026-02-04 | 0.1.0 | 初始创建 | Docs Working Group |
+| 2026-02-04 | 0.2.0 | 补充系统运维设计细节 | Docs Working Group |
