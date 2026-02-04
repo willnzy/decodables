@@ -3,7 +3,7 @@
 > 活动、实验与内容报告的运营能力设计与边界说明。
 
 **状态**: draft  
-**版本**: 0.1.0  
+**版本**: 0.2.0  
 **版本日期**: 2026-02-04  
 **最后复核**: 2026-02-04  
 **负责人**: Docs Working Group  
@@ -47,6 +47,31 @@
 - 状态/类型枚举校验
 - 统一分页：`offset` + `limit`
 - 管理员权限与接口限流
+
+## 状态与类型
+
+- Campaign type：`discount` / `trial` / `credit_bonus` / `free_tier`
+- Campaign status：`draft` / `scheduled` / `active` / `ended` / `cancelled`
+- Experiment type：`ab` / `multivariate`
+- Experiment status：`draft` / `running` / `paused` / `completed` / `cancelled`
+
+## 数据结构
+
+- Campaign：`type` / `status` / `usage_limit` / `per_user_limit` / `target_tiers`
+- CampaignStats：`claimed_count` / `conversion_rate` / `by_tier`
+- Experiment：`experiment_key` / `variants` / `traffic_allocation` / `results`
+- ExperimentResults：`winner` / `lift` / `p_value` / `is_significant`
+
+## 前端交互要点
+
+- 活动与实验分面板管理，支持状态筛选与详情查看
+- 实验结果提供趋势/小时趋势/推荐信息
+- 内容报告与审核侧共享入口
+
+## 实现边界（现状）
+
+- Campaign 创建字段与后端存在命名差异（`type/target_type/usage_limit` 等）
+- 实验列表/结果返回结构与后端字段不完全一致
 
 ## 接口清单（Admin）
 
@@ -94,3 +119,4 @@
 | 日期 | 版本 | 变更内容 | 负责人 |
 |------|------|----------|--------|
 | 2026-02-04 | 0.1.0 | 初始创建 | Docs Working Group |
+| 2026-02-04 | 0.2.0 | 补充营销运营系统设计细节 | Docs Working Group |
