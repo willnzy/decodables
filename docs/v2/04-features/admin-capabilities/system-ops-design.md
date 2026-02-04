@@ -10,7 +10,7 @@
 **适用范围**: shared  
 **source_repo**: both  
 **sync_required**: yes  
-**来源/依据**: `decodables-fe/app/admin/operations/`, `decodables/api/admin/system.py`, `decodables/api/admin/logs.py`, `decodables/api/admin/tasks_mgmt.py`, `decodables/api/admin/webhooks_retry.py`
+**来源/依据**: `decodables-fe/app/admin/operations/`, `decodables/api/admin/system.py`, `decodables/api/admin/logs.py`, `decodables/api/admin/tasks_mgmt.py`, `decodables/api/admin/webhooks_retry.py`, `decodables/api/admin/notifications.py`, `decodables/api/admin/user_creation_monitoring.py`
 
 ---
 
@@ -26,21 +26,78 @@
 
 ## 目标
 
-- 提供系统运行状态与日志可视化
-- 提供任务监控与重试能力
-- 提供通知与 Webhooks 处理入口
+- 统一运维入口（配置、缓存、日志、任务、通知、Webhooks、监控）
+- 提供可追溯的审计与安全护栏
+- 支持高风险操作的确认与限流
 
 ## 能力清单
 
-- 系统配置与缓存管理
-- 任务状态与日志监控
-- Webhooks 失败重试
-- 通知中心与消息审计
+- 系统配置管理与审计
+- 缓存状态查看与安全清理
+- 错误/操作/审计日志检索与导出
+- 任务运行状态、健康度与手动触发
+- Webhooks 失败重试与列表
+- 通知模板 CRUD 与发送
+- 用户创建监控与趋势分析
 
 ## 关键流程
 
-- 查询状态 → 处理异常 → 执行重试/清理
-- 任务监控 → 查看日志 → 处理失败任务
+- 配置管理 → 审计记录 → 缓存失效
+- 缓存清理 → 二次确认 → 审计记录
+- 日志查询 → 过滤分页 → 导出
+- 任务状态 → 健康检查 → 手动触发
+- Webhook 失败 → 复查 → 重试
+- 通知模板 → 发送 → 统计回传
+- 用户创建监控 → 趋势/事件 → 健康告警
+
+## 规则与护栏
+
+- 配置值类型与分组校验（value_type / config_group）
+- 缓存 key 与 pattern 正则校验
+- 清空缓存两步确认（/confirm → /clear-all）
+- 管理员权限与全接口限流
+
+## 接口清单（Admin）
+
+- `GET /api/v2/admin/system/configs`
+- `GET /api/v2/admin/system/configs/groups`
+- `POST /api/v2/admin/system/configs`
+- `PUT /api/v2/admin/system/configs/{key}`
+- `DELETE /api/v2/admin/system/configs/{key}`
+- `GET /api/v2/admin/system/configs/audit`
+- `POST /api/v2/admin/system/configs/cache/invalidate`
+- `GET /api/v2/admin/system/cache/status`
+- `GET /api/v2/admin/system/cache/keys`
+- `DELETE /api/v2/admin/system/cache/key/{key}`
+- `POST /api/v2/admin/system/cache/clear-all/confirm`
+- `POST /api/v2/admin/system/cache/clear-all`
+
+- `GET /api/v2/admin/logs/errors`
+- `GET /api/v2/admin/logs/errors/stats`
+- `GET /api/v2/admin/logs/operations`
+- `GET /api/v2/admin/logs/operations/export`
+- `GET /api/v2/admin/logs/audit`
+
+- `GET /api/v2/admin/tasks/management/status`
+- `GET /api/v2/admin/tasks/management/logs`
+- `GET /api/v2/admin/tasks/management/health`
+- `POST /api/v2/admin/tasks/management/{task_name}/run`
+
+- `POST /api/v2/admin/webhooks/retry`
+- `GET /api/v2/admin/webhooks/failed`
+
+- `GET /api/v2/admin/notifications`
+- `GET /api/v2/admin/notifications/{id}`
+- `POST /api/v2/admin/notifications`
+- `PUT /api/v2/admin/notifications/{id}`
+- `DELETE /api/v2/admin/notifications/{id}`
+- `POST /api/v2/admin/notifications/{id}/send`
+
+- `GET /api/v2/admin/monitoring/user-creation/stats`
+- `GET /api/v2/admin/monitoring/user-creation/health`
+- `GET /api/v2/admin/monitoring/user-creation/events`
+- `GET /api/v2/admin/monitoring/user-creation/recent`
+- `GET /api/v2/admin/monitoring/user-creation/trends`
 
 ## 影响范围
 
