@@ -48,7 +48,7 @@ CREATE TABLE articles (
     is_featured BOOLEAN DEFAULT false,     -- 是否精选 (v1.1.0 新增)
     is_published BOOLEAN DEFAULT false,    -- 发布状态
     published_at TIMESTAMPTZ,              -- 发布时间
-    author_id TEXT REFERENCES profiles(id), -- 作者 (Clerk user_id)
+    author_id UUID REFERENCES profiles(id), -- 作者 user_id
     sort_order INTEGER DEFAULT 0,          -- 排序权重 (越小越靠前)
     view_count INTEGER DEFAULT 0,          -- 阅读量
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
@@ -77,7 +77,7 @@ CREATE INDEX idx_articles_slug ON articles(slug);
 | `is_featured` | BOOLEAN | 自动 | 是否精选 (默认 false, v1.1.0 新增) |
 | `is_published` | BOOLEAN | 自动 | 是否已发布 (默认 false) |
 | `published_at` | TIMESTAMPTZ | - | 发布时间 (发布时自动设置) |
-| `author_id` | TEXT | - | 作者的 Clerk user_id |
+| `author_id` | UUID | - | 作者的 user_id |
 | `sort_order` | INTEGER | 自动 | 排序权重 (默认 0) |
 | `view_count` | INTEGER | 自动 | 阅读量 (默认 0) |
 

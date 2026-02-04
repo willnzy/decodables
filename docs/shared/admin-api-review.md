@@ -5372,7 +5372,7 @@ Theme System v2.1 - 支持 AI 批量预生成、审核工作流和主题历史�
       }
     ],
     "recommendations": [
-      "Monitor Clerk webhook delivery delays"
+      "Monitor Stripe webhook delivery delays"
     ],
     "evaluated_at": "2026-01-17T10:30:00Z"
   }

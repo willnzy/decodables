@@ -1901,7 +1901,7 @@ import React, {
   useMemo,
 } from 'react';
 import Joyride, { CallBackProps, STATUS, EVENTS } from 'react-joyride';
-import { useAuth } from '@clerk/nextjs';
+import { useAuthStore } from '@shared/auth/store';
 import { usePathname } from 'next/navigation';
 
 import {

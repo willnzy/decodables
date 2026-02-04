@@ -1222,7 +1222,7 @@ export interface FeatureVariants {
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuthStore } from '@shared/auth/store';
 import { EvaluationContext, EvaluationResult, FeatureFlags, FeatureVariants } from './types';
 
 interface FeatureFlagContextType {
@@ -1240,7 +1240,7 @@ interface FeatureFlagContextType {
 const FeatureFlagContext = createContext<FeatureFlagContextType | undefined>(undefined);
 
 export function FeatureFlagProvider({ children, refreshInterval = 60000 }) {
-  const { userId, isSignedIn } = useAuth();
+  const { userId, isAuthenticated: isSignedIn } = useAuthStore();
 
   const [flags, setFlags] = useState<FeatureFlags>({});
   const [variants, setVariants] = useState<FeatureVariants>({});

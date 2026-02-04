@@ -1539,7 +1539,7 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { useAuth } from '@clerk/nextjs';
+import { useAuthStore } from '@shared/auth/store';
 
 import {
   IFeatureFlagProvider,

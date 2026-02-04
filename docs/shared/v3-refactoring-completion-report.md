@@ -88,7 +88,7 @@ Make Decodables 后端已成功从 **V2 Legacy Architecture** 完成迁移至 **
 ```
 decodables/
 ├── 📄 app.py ........................ [506 loc] [✅ V3] [✅ Audited] - FastAPI 应用入口，路由注册，中间件配置
-├── 📄 config.py ..................... [113 loc] [✅ V3] [✅ Audited] - 环境配置，API 设置，Clerk/Stripe 密钥
+├── 📄 config.py ..................... [113 loc] [✅ V3] [✅ Audited] - 环境配置，API 设置，JWT/Stripe 密钥
 ├── 📄 container.py .................. [1662 loc] [✅ V3] [✅ Audited] - DI 容器，132+ getter 方法
 ├── 📄 dependencies.py ............... [444 loc] [✅ V3] [✅ Audited] - FastAPI 依赖注入，JWT 验证 (aud+azp)
 ├── 📄 scheduler.py .................. [284 loc] [✅ V3] [✅ Audited] - APScheduler 定时任务调度器
@@ -180,7 +180,7 @@ decodables/
 ├── 📄 tools.py ...................... [157 loc] [✅ V3] [✅ Audited] - 工具/扩展
 ├── 📄 user_assets.py ................ [362 loc] [✅ V3] [✅ Audited] - 用户素材管理
 ├── 📄 user_profile.py ............... [198 loc] [✅ V3] [✅ Audited] - 个人资料
-└── 📄 webhooks.py ................... [187 loc] [✅ V3] [✅ Audited] - Clerk/Stripe Webhooks
+└── 📄 webhooks.py ................... [187 loc] [✅ V3] [✅ Audited] - Stripe Webhooks
 ```
 
 **Total api/user/**: 30 files, 8,925 loc
@@ -626,12 +626,11 @@ decodables/
 ```
 📁 domains/webhooks/
 ├── 📄 __init__.py ................... [15 loc] [✅ V3] [✅ Audited] - Webhooks domain 初始化
-├── 📄 clerk_webhook_service.py ...... [378 loc] [✅ V3] [✅ Audited] - Clerk Webhook 处理
 ├── 📄 stripe_webhook_service.py ..... [988 loc] [✅ V3] [✅ Audited] - Stripe Webhook 处理 (原子操作)
 └── 📄 webhook_retry_service.py ...... [285 loc] [✅ V3] [✅ Audited] - Webhook 重试服务
 ```
 
-**Total domains/webhooks/**: 4 files, 1,666 loc
+**Total domains/webhooks/**: 3 files, 1,288 loc
 
 ---
 

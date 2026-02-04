@@ -204,8 +204,8 @@ def parse_user_code(user_code: str) -> dict:
 # ❌ 错误: 使用 user_code 作为数据库主键
 supabase.table("projects").select("*").eq("user_code", "26010914305278")
 
-# ✅ 正确: 使用 user_id
-supabase.table("projects").select("*").eq("user_id", "user_2abc3def")
+# ✅ 正确: 使用 user_id (UUID v4)
+supabase.table("projects").select("*").eq("user_id", "550e8400-e29b-41d4-a716-446655440000")
 
 # ❌ 错误: API 路径使用 user_code
 GET /api/users/{user_code}/projects
@@ -227,7 +227,7 @@ async def create_profile(self, user_id: str, email: str, ...):
     创建用户档案，生成双重标识符.
 
     Args:
-        user_id: Clerk 生成的 user ID (machine-friendly)
+        user_id: 系统生成的 UUID v4 (machine-friendly)
         email: 用户邮箱
         ...
 
@@ -238,7 +238,7 @@ async def create_profile(self, user_id: str, email: str, ...):
     user_code = self.generate_user_code()
 
     data = {
-        "id": user_id,  # 系统内部 ID (Clerk ID)
+        "id": user_id,  # 系统内部 ID (UUID v4)
         "email": email,
         "user_code": user_code,  # 管理友好 ID (包含注册时间+用户序号)
         "tier": "t1",  # First Tier
@@ -287,7 +287,7 @@ async def adm_refund(
     管理员退款操作，需要双因素验证.
 
     Args:
-        req.user_id: 用户的 Clerk ID
+        req.user_id: 用户的 UUID v4
         req.user_code: 用户的 user_code (验证用)
     """
     # 获取用户资料 (使用 user_id)
@@ -330,10 +330,10 @@ async def adm_refund(
 ```sql
 CREATE TABLE profiles (
     -- 系统内部 ID (主键)
-    id TEXT PRIMARY KEY,  -- Clerk user ID (e.g., "user_2abc3def")
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- 系统生成的 UUID v4
 
     -- 管理友好 ID (唯一索引)
-    user_code TEXT UNIQUE NOT NULL,  -- 26 位 (e.g., "26010914305278900123456ABC")
+    user_code TEXT UNIQUE NOT NULL,  -- 26 位 (e.g., "26010914305278900123456789")
 
     -- 其他字段...
     email TEXT UNIQUE NOT NULL,
@@ -352,7 +352,7 @@ CREATE INDEX idx_profiles_email ON profiles(email);
 -- user_code 前缀索引 (支持按日期/时间搜索)
 CREATE INDEX idx_profiles_user_code_prefix ON profiles(user_code text_pattern_ops);
 
-COMMENT ON COLUMN profiles.id IS '用户 ID (Clerk 生成，系统内部使用)';
+COMMENT ON COLUMN profiles.id IS '用户 ID (UUID v4，系统内部使用)';
 COMMENT ON COLUMN profiles.user_code IS '用户代码 (26位，包含注册时间+用户序号，管理员使用)';
 ```
 
@@ -581,8 +581,8 @@ async def get_daily_registration_stats(start_date: str, end_date: str):
 
 | 特征 | user_id | user_code |
 |------|---------|-----------|
-| **格式** | `user_2abc3def4ghi5jkl` (Clerk ID) | `26010914305278900123456ABC` (26位) |
-| **来源** | Clerk 自动生成 | 系统注册时生成 |
+| **格式** | `550e8400-e29b-41d4-a716-446655440000` (UUID v4) | `26010914305278900123456789` (26位) |
+| **来源** | 系统注册时生成 | 系统注册时生成 |
 | **可读性** | 机器友好 | 人类友好 |
 | **包含信息** | 无语义 | 注册日期+时间+用户序号 |
 | **主要用途** | 系统内部/数据库 | 管理员/客服/数据分析 |

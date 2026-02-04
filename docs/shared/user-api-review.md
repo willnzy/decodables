@@ -188,7 +188,7 @@
 | 130 | User Profile | POST | /user_profile/notifications/{id}/read | mark_notification_read | api/user/user_profile.py | 标记通知为已读 |
 | 131 | User Profile | POST | /user_profile/notifications/read-all | mark_all_read | api/user/user_profile.py | 标记所有通知为已读 |
 | 132 | User Profile | PUT | /user_profile/timezone | update_timezone | api/user/user_profile.py | 更新时区 |
-| 133 | Webhooks | POST | /webhooks/clerk | clerk_webhook | api/user/webhooks.py | Clerk Webhook处理 |
+| 133 | Webhooks | POST | /webhooks/clerk | - | - | ❌ 已移除 (改用自建认证) |
 | 134 | Webhooks | POST | /webhooks/stripe | stripe_webhook | api/user/webhooks.py | Stripe Webhook处理 |
 | 135 | Folders | GET | /folders | list_folders | api/user/folders.py | 获取文件夹列表 (v3.33) |
 | 136 | Folders | POST | /folders | create_folder | api/user/folders.py | 创建文件夹 (v3.33) |
@@ -3382,31 +3382,8 @@ URL检查
 
 ## 30. Webhooks
 
-### POST `/webhooks/clerk`
-
-Clerk Webhook 处理
-
-**请求头**:
-```http
-svix-id: <event_id>
-svix-timestamp: <timestamp>
-svix-signature: <signature>
-```
-
-**事件处理**:
-- `user.created`: 创建用户档案 + 赠送 50 永久积分
-- `user.updated`: 更新用户信息
-- `session.*`: 记录登录/登出活动
-
-**响应**:
-```json
-{
-  "status": "success",
-  "reason": "user_created"
-}
-```
-
----
+> **注意**: `/webhooks/clerk` 端点已移除，改用自建认证系统 (JWT + OTP)。
+> 用户注册/更新逻辑现由 `domains/auth/` 模块处理。
 
 ### POST `/webhooks/stripe`
 

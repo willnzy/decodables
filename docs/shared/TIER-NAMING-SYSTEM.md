@@ -154,7 +154,7 @@ INSERT INTO system_configs (key, value, value_type, category, description, is_us
 
 ```sql
 CREATE TABLE profiles (
-    id TEXT PRIMARY KEY,  -- Clerk user ID
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),  -- 系统生成的 UUID v4
     email TEXT NOT NULL UNIQUE,
 
     -- 用户等级 (系统代码)

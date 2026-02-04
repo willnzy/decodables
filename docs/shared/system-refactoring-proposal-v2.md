@@ -108,11 +108,11 @@ decodables/
 ├── 🔷 core/                            # 框架层 (100% 复用)
 │   ├── __init__.py
 │   │
-│   ├── auth/                           # 认证抽象
+│   ├── auth/                           # 认证服务 (自建 JWT + OTP)
 │   │   ├── __init__.py
-│   │   ├── interface.py               # IAuthProvider (<80 行)
-│   │   ├── clerk_provider.py          # Clerk 实现 (<200 行)
-│   │   └── jwt_utils.py               # JWT 工具 (<100 行)
+│   │   ├── service.py                 # AuthService (<300 行)
+│   │   ├── token_service.py           # JWT 生成/验证 (<200 行)
+│   │   └── otp_service.py             # OTP 邮件验证 (<150 行)
 │   │
 │   ├── cache/                          # 缓存服务
 │   │   ├── __init__.py
@@ -313,7 +313,6 @@ decodables/
 │   │   ├── generation.py              # (<150 行)
 │   │   ├── feature_flags.py           # (<120 行)
 │   │   ├── webhooks/
-│   │   │   ├── clerk.py               # (<150 行)
 │   │   │   └── stripe.py              # (<200 行)
 │   │   └── admin/
 │   │       ├── users.py               # (<120 行)
@@ -431,8 +430,8 @@ app/
 ├── news/[slug]/page.js           # 📰 新闻公告
 ├── notifications/page.js         # 🔔 通知中心
 ├── transaction-history/page.js   # 💳 交易历史
-├── sign-in/[[...sign-in]]/       # 🔐 登录 (Clerk)
-├── sign-up/[[...sign-up]]/       # 🔐 注册 (Clerk)
+├── sign-in/                      # 🔐 登录 (自建 JWT + OTP)
+├── sign-up/                      # 🔐 注册 (自建 JWT + OTP)
 └── [静态页面]/                   # about-us, privacy-policy, etc.
 ```
 
@@ -643,17 +642,24 @@ trigger: {
 
 ## 7. 登录注册方案
 
-**决策**: 继续使用 Clerk，抽象接口便于未来切换
+**决策**: 自建认证系统 (JWT HS256 + OTP Email)
+
+> 已完成从 Clerk 迁移到自建认证，详见 `docs/shared/self-hosted-auth-design.md`
 
 ```typescript
-// @shared/auth/interface.ts
-interface IAuthProvider {
-  getCurrentUser(): Promise<User | null>;
-  signIn(): Promise<void>;
-  signOut(): Promise<void>;
-  getToken(): Promise<string | null>;
+// @shared/auth/store.ts
+interface AuthState {
+  userId: string | null;          // UUID v4
+  isAuthenticated: boolean;
+  accessToken: string | null;     // JWT HS256 (内存)
+  // refreshToken 存储在 httpOnly cookie
 }
 ```
+
+**技术栈**:
+- 密码哈希: argon2id
+- JWT: HS256 算法, Access Token 15min / Refresh Token 7d
+- OTP: 6 位数字, 5 分钟有效期, 邮件发送
 
 ---
 
