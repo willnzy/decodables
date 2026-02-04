@@ -16,3 +16,6 @@
 | `docs/v2/03-business/entitlement/feature-flag-engine.md` | Backend Team | backend | 2026-02-04 | synced |
 | `docs/v2/03-business/entitlement/ui-spec.md` | Frontend Team | frontend | 2026-02-04 | synced |
 | `docs/v2/02-standards/logging-standard.md` | Backend Team | backend | 2026-02-04 | synced |
+| `docs/v2/05-api/api-reference.md` | Backend Team | backend | 2026-02-04 | synced |
+| `docs/v2/05-api/user-endpoints.md` | Backend Team | backend | 2026-02-04 | synced |
+| `docs/v2/05-api/admin-endpoints.md` | Backend Team | backend | 2026-02-04 | synced |
