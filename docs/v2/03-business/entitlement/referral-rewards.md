@@ -13,6 +13,16 @@
 
 ---
 
+## 背景
+
+- 需要统一邀请奖励机制与风控规则
+- 明确奖励发放条件与限制
+
+## 设计约束（强制）
+
+- 禁止照搬旧文档结构或原文段落
+- 必须与覆盖矩阵保持一致
+
 ## 奖励机制
 
 | 角色 | 配置 key | 说明 |
@@ -44,3 +54,19 @@
 
 - `referrals` 邀请记录表  
 - `referral_codes` 邀请码表
+
+## 影响范围
+
+- 相关模块：邀请奖励与积分
+- 相关文档：`docs/v2/03-business/entitlement/credits-lifecycle.md`
+
+## 证据与验证
+
+- 关键证据来源：`decodables/domains/billing/`、`decodables/api/user/referrals.py`
+- 覆盖矩阵对应条目：`09-reference/feature-coverage-matrix.md`
+
+## 变更记录
+
+| 日期 | 版本 | 变更内容 | 负责人 |
+|------|------|----------|--------|
+| 2026-02-04 | 2.2.0 | 结构对齐模板 | Docs Working Group |
