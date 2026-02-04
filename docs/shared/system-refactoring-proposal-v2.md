@@ -378,7 +378,7 @@ decodables/
 | `services/marketplace_service.py` | `domains/marketplace/` | 聚合化 |
 | `services/ai/` | `shared/ai/` | 保留适配器 |
 | `services/cache_service.py` | `core/cache/` | 框架层 |
-| `routers/*.py` | `api/routers/` | 调用 application |
+| `routers/*.py` | `api/user/` + `api/admin/` | 调用 application |
 | `exceptions/` | `core/exceptions/` + `domains/*/exceptions.py` | 拆分 |
 
 ---

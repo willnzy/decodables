@@ -3709,7 +3709,7 @@ CREATE INDEX idx_invoices_stripe ON invoices(stripe_invoice_id);
 #### 9.5.3 API 设计
 
 ```python
-# api/routers/billing.py
+# api/user/billing.py
 
 @router.get("/invoices")
 async def list_invoices(

@@ -277,14 +277,14 @@ class TierService:
 
 ```python
 # 业务逻辑使用系统代码
-from domains.user.constants import TIER_T1, TIER_T2, TIER_MONTHLY_CREDITS
+from domains.identity.constants import TIER_T1, TIER_T2, TIER_MONTHLY_CREDITS
 
 # ✅ 正确: 使用系统代码
 if user.tier == TIER_T2:
     credits = TIER_MONTHLY_CREDITS[TIER_T2]  # 200
 
 # ✅ 正确: 判断等级
-from domains.user.constants import TIER_LEVELS
+from domains.identity.constants import TIER_LEVELS
 if TIER_LEVELS[user.tier] >= TIER_LEVELS[TIER_T2]:
     # 用户是 Second Tier 或更高等级
     allow_feature = True
@@ -292,7 +292,7 @@ if TIER_LEVELS[user.tier] >= TIER_LEVELS[TIER_T2]:
 
 ```python
 # API 返回显示名称
-from domains.user.tier_service import TierService
+from domains.identity.tier_service import TierService
 
 @router.get("/me")
 async def get_current_user(user_id: str):
@@ -566,8 +566,8 @@ app/**/components/**/*.tsx             # 更新所有显示 tier 的组件
 ```python
 # tests/domains/test_tier_service.py
 import pytest
-from domains.user.tier_service import TierService
-from domains.user.constants import TIER_T1, TIER_T2, TIER_T3
+from domains.identity.tier_service import TierService
+from domains.identity.constants import TIER_T1, TIER_T2, TIER_T3
 
 @pytest.mark.asyncio
 async def test_get_tier_display_name():

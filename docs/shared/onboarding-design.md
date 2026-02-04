@@ -1643,14 +1643,14 @@ application/queries/onboarding/
 ├── get_tour_progress.py        # 获取引导进度 (<60 行)
 └── get_checklist_progress.py   # 获取清单进度 (<80 行)
 
-api/routers/
+api/user/
 └── onboarding.py               # API 路由 (<200 行)
 ```
 
 ### 8.2 API 路由
 
 ```python
-# api/routers/onboarding.py
+# api/user/onboarding.py
 
 from fastapi import APIRouter, Depends
 from typing import List, Optional
