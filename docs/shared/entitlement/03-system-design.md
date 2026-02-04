@@ -250,12 +250,12 @@ Level 4: Flag variant (A/B / 灰度)             → 附加 variant 信息  (最
 ```sql
 CREATE TABLE IF NOT EXISTS user_feature_overrides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     feature_key TEXT NOT NULL,            -- 功能 Key, 如 'smart_scan', 'ai_features'
     override_value TEXT NOT NULL,         -- 覆盖值: 'true' | 'false' | 'trial'
     reason TEXT,                          -- 覆盖原因 (运营记录): "KOL 合作" / "客服补偿" / "AB 实验"
     expires_at TIMESTAMPTZ,               -- 过期时间 (可选, NULL=永久)
-    created_by TEXT,                      -- 操作人 (Admin user_id)
+    created_by UUID,                      -- 操作人 (Admin user_id)
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(user_id, feature_key)

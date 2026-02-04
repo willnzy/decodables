@@ -210,9 +210,9 @@
 | 3.4.1 | **签名验证** | Stripe webhook 是否验证签名？ | 所有 webhook 验证签名 |
 | 3.4.2 | **幂等处理** | 重复 webhook 是否幂等？ | 有 event_id 去重 |
 | 3.4.3 | **Stripe 事件覆盖** | 是否处理所有必要事件？ | checkout.completed, invoice.paid, invoice.payment_failed, customer.subscription.*, charge.refunded |
-| 3.4.6 | **用户生命周期事件** | 是否处理用户注册/删除同步？ | 自建认证系统或第三方 webhook |
 | 3.4.4 | **错误处理** | webhook 失败是否正确响应？ | 返回 4xx/5xx 以便重试 |
 | 3.4.5 | **超时处理** | 长时间处理是否异步化？ | 响应 < 30s |
+| 3.4.6 | **用户生命周期事件** | 是否处理用户注册/删除同步？ | 自建认证系统 (JWT + OTP) |
 
 ---
 
@@ -434,7 +434,8 @@
 
 扣费策略: FEFO (First Expire, First Out)
 1. 先扣即将过期的积分 (expires_at ASC, NOT NULL 优先)
-2. 永久积分 (expires_at IS NULL) 按来源优先级: bonus_signup > bonus_referral > bonus_campaign > earning > purchase > compensation
+2. 永久积分 (expires_at IS NULL) 按来源优先级:
+   subscription (已到月底) > bonus_signup > bonus_referral > bonus_campaign > earning > purchase > compensation
 
 退款回收: 反向顺序
 compensation → earning → purchase → bonus_campaign → bonus_referral → bonus_signup → subscription

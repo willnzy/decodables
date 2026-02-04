@@ -73,7 +73,7 @@ compensation → earning → purchase → bonus_campaign → bonus_referral → 
 -- 积分池表：每个用户可有多个积分池
 CREATE TABLE IF NOT EXISTS credit_pools (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 来源类型
     source_type VARCHAR(30) NOT NULL CHECK (source_type IN (
@@ -117,7 +117,7 @@ WHERE expires_at IS NOT NULL AND balance > 0;
 -- 积分流水表：记录每笔积分变动
 CREATE TABLE IF NOT EXISTS credit_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id TEXT NOT NULL REFERENCES profiles(user_id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     pool_id UUID REFERENCES credit_pools(id),  -- 关联的积分池
 
     -- 交易类型
