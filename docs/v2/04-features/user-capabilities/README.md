@@ -6,6 +6,9 @@
 
 ## 目录说明
 
+- `workspace-system-design.md`：Workspace 系统设计
+- `content-organization-design.md`：内容组织系统设计
+- `generation-system-design.md`：生成与导出系统设计
 - `editor-system-design.md`：编辑器系统设计
 - `marketplace-system-design.md`：Marketplace 系统设计
 - `billing-system-design.md`：计费与积分系统设计
