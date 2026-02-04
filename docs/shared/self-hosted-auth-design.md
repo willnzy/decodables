@@ -347,7 +347,7 @@ Clerk 使用 bcrypt（历史原因，2017 年之前 argon2 生态不够成熟）
 
 ```
 auth_users
-├── id                          UUID PK (DEFAULT uuid_generate_v4())
+├── id                          UUID PK (DEFAULT gen_random_uuid())
 ├── email                       TEXT UNIQUE NOT NULL
 ├── password_hash               TEXT (argon2id，注册完成后才有值，OTP 验证阶段为 NULL)
 ├── email_verified              BOOLEAN DEFAULT FALSE
@@ -476,7 +476,7 @@ profiles.id: TEXT → UUID
 ```
 输入: p_email, p_password_hash, p_display_name, p_signup_bonus
 操作:
-  1. 生成 UUID (uuid_generate_v4())
+  1. 生成 UUID (gen_random_uuid())
   2. INSERT INTO auth_users (id, email, password_hash, email_verified=true, ...)
   3. INSERT INTO profiles (id, email, user_code, credits_permanent, created_by='register', ...)
   4. 两个 INSERT 在同一事务中，保证原子性
@@ -524,7 +524,7 @@ SQL 伪代码:
     FROM auth_users WHERE email = LOWER(p_email) FOR UPDATE;
 
     IF NOT FOUND THEN
-      v_user_id := uuid_generate_v4();
+      v_user_id := gen_random_uuid();
       INSERT INTO auth_users (id, email, otp_code_hash, otp_purpose, otp_expires_at, password_hash, email_verified)
       VALUES (v_user_id, LOWER(p_email), p_otp_code_hash, 'register', p_otp_expires_at, NULL, false);
       RETURN v_user_id;
@@ -2444,7 +2444,7 @@ Git 分支: feat/auth-phase0-schema
 - ✅ 验证：SQL 语法检查通过
 
 **Step 0.2: `profiles` 表改造（`01_core_business.sql`）**
-- 修改 `profiles` 表定义：`id TEXT PRIMARY KEY` → `id UUID PRIMARY KEY DEFAULT uuid_generate_v4()`
+- 修改 `profiles` 表定义：`id TEXT PRIMARY KEY` → `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`
 - 新增字段：`email_hash TEXT`（SHA-256 hash，账户删除时写入，用于去重分析）
 - 新增部分唯一索引：`CREATE UNIQUE INDEX idx_profiles_email_unique ON profiles(email) WHERE is_deleted = false;`
   （活跃用户邮箱唯一，软删除记录不受约束，详见 4.4）

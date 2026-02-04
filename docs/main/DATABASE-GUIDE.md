@@ -1269,7 +1269,7 @@ LIMIT 10000;  -- 分批删除
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
-| `id` | TEXT | - |
+| `id` | UUID | 主键 (gen_random_uuid()) |
 | `email` | TEXT | - |
 | `username` | TEXT | - |
 | `display_name` | TEXT | - |
