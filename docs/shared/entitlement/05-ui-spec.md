@@ -1,9 +1,10 @@
 # 用户权限 UI 交互规范
 
-> **版本**: v1.4
+> **版本**: v1.5
 > **日期**: 2026-02-04
 > **状态**: 设计完成
 > **适用范围**: 功能权限、配额限制的前端 UI 交互
+> **实现状态**: 🟡 部分前端组件待实现
 
 ---
 
@@ -1156,7 +1157,52 @@ export function GracePeriodBanner({
 
 ---
 
-## 十四、修订历史
+## 十四、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下前端组件已在本文档设计但尚未实现
+
+### 14.1 边界场景组件 (🔴 P0)
+
+| # | 组件名 | 说明 | 位置 | 优先级 |
+|---|--------|------|------|--------|
+| 1 | **TrialStatusBanner** | 试用期状态顶部 Banner | 参见 §11.1 | 🔴 P0 |
+| 2 | **TrialExpiredModal** | 试用期过期弹窗 | 参见 §11.2 | 🔴 P0 |
+| 3 | **EditorReadOnlyOverlay** | 编辑器只读模式遮罩 | 参见 §12.1 | 🔴 P0 |
+| 4 | **LockedProjectCard** | 已锁定项目卡片 | 参见 §13.1 | 🟡 P1 |
+| 5 | **GracePeriodBanner** | 宽限期顶部 Banner | 参见 §13.2 | 🟡 P1 |
+| 6 | **PausedSubscriptionBanner** | 订阅暂停状态 Banner | 待设计 | 🟡 P1 |
+| 7 | **DowngradeConfirmModal** | 降级确认弹窗 | 待设计 | 🟡 P1 |
+
+### 14.2 配额相关组件 (🟡 P1)
+
+| # | 组件名 | 说明 | 优先级 |
+|---|--------|------|--------|
+| 1 | **QuotaBar** | 配额进度条 (参见 §4.2) | 🟡 P1 |
+| 2 | **ProjectLimitWarning** | 项目数量限制提醒 (参见 §4.3) | 🟡 P1 |
+| 3 | **CreditsDisplay** | 积分余额展示 (需完善月度/永久分开显示) | 🟡 P1 |
+
+### 14.3 Hooks 实现 (🟡 P1)
+
+| # | Hook 名 | 说明 | 优先级 |
+|---|--------|------|--------|
+| 1 | **useQuotaGuard** | 配额检查 Hook (参见 §4.1) | 🟡 P1 |
+| 2 | **useTrialStatus** | 试用期状态 Hook | 🟡 P1 |
+| 3 | **useGracePeriod** | 宽限期状态 Hook | 🟡 P1 |
+
+### 14.4 实现依赖
+
+```
+前端组件实现顺序:
+1. 先实现后端 API (试用期状态、宽限期状态)
+2. 实现 Hooks (useTrialStatus, useGracePeriod)
+3. 实现 Banner 组件 (TrialStatusBanner, GracePeriodBanner)
+4. 实现 Modal 组件 (TrialExpiredModal, DowngradeConfirmModal)
+5. 实现 Overlay/Card 组件 (EditorReadOnlyOverlay, LockedProjectCard)
+```
+
+---
+
+## 十五、修订历史
 
 | 版本 | 日期 | 变更内容 |
 |------|------|----------|
@@ -1165,6 +1211,7 @@ export function GracePeriodBanner({
 | v1.2 | 2026-02-04 | 基于 CSV 表格校准：Editor 页面功能控制方式、第 7-9 行说明 |
 | v1.3 | 2026-02-04 | 全面审计修复：PDF 打印/下载注释错误修正；t2 maxCustomAssets 改为 50/Account |
 | v1.4 | 2026-02-04 | **边界场景 UI 规范**：(1) 试用期状态提醒 (TrialStatusBanner + TrialExpiredModal)；(2) 编辑器只读模式 (EditorReadOnlyOverlay + 操作限制表)；(3) Tier 降级资源锁定 (LockedProjectCard + GracePeriodBanner) |
+| v1.5 | 2026-02-04 | 添加待实现清单：7 个边界场景组件、3 个配额组件、3 个 Hooks |
 
 ---
 

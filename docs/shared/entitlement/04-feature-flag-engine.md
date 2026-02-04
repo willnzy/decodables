@@ -1,9 +1,10 @@
 # Feature Flag 评估引擎
 
-> **版本**: v2.0
-> **日期**: 2026-02-03
+> **版本**: v2.3
+> **日期**: 2026-02-04
 > **状态**: 设计完成
 > **说明**: 本文档包含 Feature Flag 系统的数据库设计、评估引擎、前后端实现、A/B 实验统计
+> **实现状态**: 🟡 部分后端逻辑待实现
 
 ---
 
@@ -1694,7 +1695,68 @@ export function FeatureFlagDebugger() {
 
 ---
 
-## 十一、修订历史
+## 十一、待实现清单
+
+> ⚠️ **审计发现** (2026-02-04): 以下内容已设计但尚未在数据库/后端实现
+
+### 11.1 数据库层 (🟡 P1)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | **创建 `feature_flags` 表** | Feature Flag 核心表 (参见 §2.1) | 🟡 P1 |
+| 2 | **创建 `experiment_configs` 表** | A/B 实验配置扩展表 (参见 §2.2) | 🟢 P2 |
+| 3 | **创建 `flag_exposures` 表** | 曝光事件表 (参见 §2.3) | 🟢 P2 |
+| 4 | **创建 `experiment_results` 表** | 实验结果聚合表 (参见 §2.4) | 🟢 P2 |
+| 5 | **创建 `flag_audit_logs` 表** | 审计日志表 (参见 §2.5) | 🟢 P2 |
+| 6 | **添加相关索引** | 参见各表索引定义 | 🟡 P1 |
+| 7 | **创建 `update_feature_flags_timestamp` 触发器** | 自动更新 updated_at | 🟡 P1 |
+
+### 11.2 后端逻辑层 (🟡 P1)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | `UnifiedEvaluator` 实现 | 统一评估引擎 (参见 §3.3) | 🟡 P1 |
+| 2 | `FeatureFlagService` 实现 | Facade 服务 (参见 §3.5) | 🟡 P1 |
+| 3 | `SelfHostedProvider` 实现 | 自建 Provider (参见 §3.1) | 🟡 P1 |
+| 4 | `get_hash_bucket()` 函数 | 确定性哈希分配 (参见 §3.4) | 🟡 P1 |
+| 5 | 曝光追踪逻辑 | 记录到 flag_exposures 表 | 🟢 P2 |
+| 6 | 转化追踪逻辑 | track_conversion 实现 | 🟢 P2 |
+
+### 11.3 Admin API (🟡 P1)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | `GET /api/admin/feature-flags` | 获取 Flag 列表 | 🟡 P1 |
+| 2 | `POST /api/admin/feature-flags` | 创建 Flag | 🟡 P1 |
+| 3 | `GET /api/admin/feature-flags/{key}` | 获取单个 Flag | 🟡 P1 |
+| 4 | `PATCH /api/admin/feature-flags/{key}` | 更新 Flag | 🟡 P1 |
+| 5 | `POST /api/admin/feature-flags/{key}/toggle` | 开关 Flag | 🟡 P1 |
+| 6 | `POST /api/admin/feature-flags/test-evaluation` | 测试评估 | 🟢 P2 |
+| 7 | `GET /api/feature-flags/client/flags` | 获取当前用户 Flags | 🟡 P1 |
+
+### 11.4 前端实现 (🟡 P1)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | `FeatureFlagProvider` 组件 | Context Provider (参见 §4.3) | 🟡 P1 |
+| 2 | `useFeatureFlag` Hook | 检查 Flag 状态 | 🟡 P1 |
+| 3 | `useVariant` Hook | 获取变体 | 🟡 P1 |
+| 4 | `useExperiment` Hook | 实验追踪 | 🟢 P2 |
+| 5 | `FeatureFlag` 组件 | 条件渲染组件 (参见 §4.4) | 🟡 P1 |
+| 6 | `FeatureVariant` 组件 | 多变体渲染组件 | 🟢 P2 |
+| 7 | `FeatureFlagDebugger` 组件 | 开发调试面板 (参见 §9.1) | 🟢 P2 |
+
+### 11.5 A/B 实验扩展 (🟢 P2)
+
+| # | 待实现项 | 说明 | 优先级 |
+|---|---------|------|--------|
+| 1 | 实验结果聚合定时任务 | 聚合 flag_exposures → experiment_results | 🟢 P2 |
+| 2 | 统计显著性计算 | p-value, confidence 计算 | 🟢 P2 |
+| 3 | Admin 实验分析界面 | 转化率图表、统计结果 | 🟢 P2 |
+
+---
+
+## 十二、修订历史
 
 | 版本 | 日期 | 变更内容 |
 |------|------|----------|
@@ -1704,6 +1766,7 @@ export function FeatureFlagDebugger() {
 | v2.0 | 2026-02-03 | 文档重组：从 feature-flag-design.md 迁移，聚焦引擎实现 |
 | v2.1 | 2026-02-03 | 补充遗漏：回滚方案、监控指标、调试组件、operators (not_contains/starts_with/ends_with) |
 | v2.2 | 2026-02-03 | 补充遗漏：审计类型详细说明、实施检查清单 |
+| v2.3 | 2026-02-04 | 添加待实现清单：数据库表、后端逻辑、Admin API、前端组件 |
 
 ---
 
