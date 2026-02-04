@@ -13,6 +13,16 @@
 
 ---
 
+## 背景
+
+- 需要统一用户标识符的使用规范
+- 支持管理搜索与敏感操作验证
+
+## 设计约束（强制）
+
+- 禁止照搬旧文档结构或原文段落
+- 必须与覆盖矩阵保持一致
+
 ## 概述
 
 系统使用**双重用户标识符**机制，分别服务于系统内部与管理场景。
@@ -86,3 +96,19 @@ YYMMDD + HHMMSS + mmmm + UUUUUUU + RRR
 ## 相关文档
 
 - `docs/v2/03-business/tier-naming-system.md`
+
+## 影响范围
+
+- 相关模块：用户标识、认证与权限
+- 相关文档：`docs/v2/03-business/tier-naming-system.md`
+
+## 证据与验证
+
+- 关键证据来源：`decodables/domains/identity/`、`decodables/api/user/`
+- 覆盖矩阵对应条目：`09-reference/feature-coverage-matrix.md`
+
+## 变更记录
+
+| 日期 | 版本 | 变更内容 | 负责人 |
+|------|------|----------|--------|
+| 2026-02-04 | 1.0.0 | 结构对齐模板 | Docs Working Group |

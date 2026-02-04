@@ -13,6 +13,16 @@
 
 ---
 
+## 背景
+
+- 需要统一 Tier 命名与显示策略
+- 支撑配置化与营销可变更需求
+
+## 设计约束（强制）
+
+- 禁止照搬旧文档结构或原文段落
+- 必须与覆盖矩阵保持一致
+
 ## 概述
 
 Make Decodables 的用户等级 (Tier) 系统采用**配置化命名**机制，允许管理员通过 Admin 面板动态修改等级显示名称，以便未来营销策略调整。
@@ -149,3 +159,19 @@ if user.tier == "t2":
 ## 相关文档
 
 - `docs/v2/03-business/entitlement/permission-matrix.md`
+
+## 影响范围
+
+- 相关模块：Tier 配置、订阅与权益
+- 相关文档：`docs/v2/03-business/entitlement/permission-matrix.md`
+
+## 证据与验证
+
+- 关键证据来源：`decodables/domains/identity/`、`decodables/api/admin/config.py`
+- 覆盖矩阵对应条目：`09-reference/feature-coverage-matrix.md`
+
+## 变更记录
+
+| 日期 | 版本 | 变更内容 | 负责人 |
+|------|------|----------|--------|
+| 2026-02-04 | 2.1.0 | 结构对齐模板 | Docs Working Group |
