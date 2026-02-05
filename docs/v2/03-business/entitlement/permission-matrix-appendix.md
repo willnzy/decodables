@@ -58,4 +58,3 @@
 | 日期 | 版本 | 变更内容 | 负责人 |
 |------|------|----------|--------|
 | 2026-02-04 | 1.3.0 | 结构对齐模板 | Docs Working Group |
-*** End Patch}]}Commentary to=functions.ApplyPatch code

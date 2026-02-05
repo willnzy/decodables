@@ -10,7 +10,7 @@
  **适用范围**: shared  
  **source_repo**: both  
  **sync_required**: yes  
- **来源/依据**: `decodables-fe/docs/shared/`、`decodables/docs/shared/`、`decodables/docs/v2/09-reference/feature-coverage-matrix.md`
+**来源/依据**: `decodables-fe/docs/shared/`、`decodables/docs/shared/`、`decodables-fe/docs/v2/09-reference/feature-coverage-matrix.md`、`decodables/docs/v2/09-reference/feature-coverage-matrix.md`
  
  ---
  

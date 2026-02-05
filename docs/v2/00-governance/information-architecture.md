@@ -7,8 +7,8 @@
 **版本日期**: 2026-02-04  
 **最后复核**: 2026-02-04  
 **负责人**: Docs Working Group  
-**适用范围**: backend  
-**source_repo**: backend  
+**适用范围**: shared  
+**source_repo**: both  
 **sync_required**: yes  
 **来源/依据**: `decodables-fe/app/`、`decodables-fe/app/admin/`、`decodables/domains/`、`decodables/api/admin/`
 

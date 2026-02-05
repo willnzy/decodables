@@ -138,7 +138,7 @@
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  一级分类 (Tab)           二级分类 (标签/筛选)                    │
-│  ───────────────────────────────────────────────                │
+│  ─────────────────────────────────────────────────────────      │
 │                                                                 │
 │  1️⃣ AI Generate          • Image Generation                     │
 │     (AI 生成)            • Story Generation                     │
@@ -514,33 +514,33 @@ interface NumberInputProps {
 │                                                                 │
 │  Media Library 扩展:                                             │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  当前:                                                    │
+│  │  当前:                                                    │   │
 │  │  [✨AI] [📋Tmpl] [🎨Stick] [🖼️BG] [T] [🔲] [📁] [⭐]    │   │
-│  │                                                          │
-│  │  未来可新增 Tab:                                          │
-│  │  [🖌️ Draw]    - 画笔/手绘工具                            │
-│  │  [📊 Charts]  - 图表组件                                 │
-│  │  [🎬 Video]   - 视频/GIF (Pro)                           │
-│  │  [🔊 Audio]   - 音频 (Pro)                               │
-│  │  [📝 Tables]  - 表格组件                                 │
-│  │  [🧩 Widgets] - 交互组件                                 │
+│  │                                                          │   │
+│  │  未来可新增 Tab:                                          │   │
+│  │  [🖌️ Draw]    - 画笔/手绘工具                            │   │
+│  │  [📊 Charts]  - 图表组件                                 │   │
+│  │  [🎬 Video]   - 视频/GIF (Pro)                           │   │
+│  │  [🔊 Audio]   - 音频 (Pro)                               │   │
+│  │  [📝 Tables]  - 表格组件                                 │   │
+│  │  [🧩 Widgets] - 交互组件                                 │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 │  Properties Panel 扩展:                                          │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │  未来可新增属性组:                                        │
-│  │                                                          │
-│  │  • Draw Properties (画笔属性)                            │
-│  │    - Brush Type, Size, Opacity, Smoothing               │
-│  │                                                          │
-│  │  • Animation Properties (动画属性)                       │
-│  │    - Entry, Exit, Duration, Delay                       │
-│  │                                                          │
-│  │  • Interaction Properties (交互属性)                     │
-│  │    - Click Action, Hover Effect                         │
-│  │                                                          │
-│  │  • Layer Properties (图层属性)                           │
-│  │    - Blend Mode, Layer Effects                          │
+│  │  未来可新增属性组:                                        │   │
+│  │                                                          │   │
+│  │  • Draw Properties (画笔属性)                            │   │
+│  │    - Brush Type, Size, Opacity, Smoothing               │   │
+│  │                                                          │   │
+│  │  • Animation Properties (动画属性)                       │   │
+│  │    - Entry, Exit, Duration, Delay                       │   │
+│  │                                                          │   │
+│  │  • Interaction Properties (交互属性)                     │   │
+│  │    - Click Action, Hover Effect                         │   │
+│  │                                                          │   │
+│  │  • Layer Properties (图层属性)                           │   │
+│  │    - Blend Mode, Layer Effects                          │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘

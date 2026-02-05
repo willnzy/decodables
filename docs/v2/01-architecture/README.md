@@ -7,6 +7,8 @@
 ## 目录说明
 
 - `backend-architecture.md`: 后端架构总览
+- `frontend-architecture.md`: 前端架构总览（摘要版）
+- `frontend-architecture-audit.md`: 前端架构审计与改进建议
 - `architecture-proposal.md`: 架构方案提案
 - `self-hosted-auth-design.md`: 自建认证系统设计（shared）
 - `system-refactoring-proposal-v2.md`: 系统重构方案 v2（shared）
@@ -20,4 +22,4 @@
 
 ## 层级规则
 
-- 总览 → 方案 → ADR → 专题方案
+- 总览 → 方案 → ADR → 专题方案 → 审计与评估

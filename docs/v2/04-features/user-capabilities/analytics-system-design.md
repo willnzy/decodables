@@ -1,6 +1,6 @@
 # 用户分析系统设计
 
-> 用户行为、事件与指标分析能力说明。
+> 用户侧分析与事件采集能力说明。
 
 **状态**: draft  
 **版本**: 0.2.0  
@@ -10,14 +10,14 @@
 **适用范围**: shared  
 **source_repo**: both  
 **sync_required**: yes  
-**来源/依据**: `decodables/domains/analytics/`, `decodables/api/user/analytics.py`
+**来源/依据**: `decodables/domains/events/`, `decodables/api/user/analytics.py`
 
 ---
 
 ## 背景
 
-- 需要统一用户行为与事件采集
-- 需要支持指标聚合与趋势分析
+- 需要统一用户事件采集与分析口径
+- 需要明确可见指标与使用边界
 
 ## 设计约束（强制）
 
@@ -26,15 +26,15 @@
 
 ## 目标
 
-- 统一事件与指标口径
-- 提供用户分析能力
-- 规范数据权限与脱敏
+- 规范事件采集与指标计算
+- 支持用户侧行为分析
+- 约束数据隐私与留存
 
 ## 能力清单
 
-- 事件采集与上报
-- 指标聚合与查询
-- 行为趋势与洞察
+- 用户事件采集
+- 指标聚合与展示
+- 行为趋势与统计
 
 ## 关键流程
 
@@ -73,7 +73,7 @@
 
 ## 证据与验证
 
-- 关键证据来源：`decodables/domains/analytics/`、`decodables/api/user/analytics.py`
+- 关键证据来源：`decodables/domains/events/`、`decodables/api/user/analytics.py`
 - 覆盖矩阵对应条目：`09-reference/feature-coverage-matrix.md`
 
 ## 变更记录

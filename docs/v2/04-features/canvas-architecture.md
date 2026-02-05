@@ -442,7 +442,6 @@
 │   ├── path/
 │   │   ├── PathTool.ts            # 路径工具 (<250 行)
 │   │   └── PathEditTool.ts        # 路径编辑 (<300 行)
-│
 │   │
 │   └── text/
 │       └── TextTool.ts            # 文本工具 (<200 行)

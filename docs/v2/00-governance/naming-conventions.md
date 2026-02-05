@@ -9,7 +9,9 @@
 示例：
 
 - `backend-architecture.md`
+- `frontend-development-guide.md`
 - `tier-naming-system.md`
+- `canvas-architecture.md`
 - `audit-report-20260204.md`
 
 ## 版本命名
