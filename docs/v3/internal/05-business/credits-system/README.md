@@ -32,7 +32,7 @@ credits_monthly → credits_permanent
 |------|------|
 | AI 生图 | 5 |
 | AI 生 Page | 5 |
-| OCR 识别 | 5 |
+| OCR 识别 | 10 |
 
 ## 充值档位
 
