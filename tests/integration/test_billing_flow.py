@@ -10,7 +10,7 @@ Domain → Application → Infrastructure → Database
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
+from datetime import datetime, timezone
 
 from domains.billing import (
     BillingService,
@@ -227,7 +227,7 @@ class TestBillingTransactionHistory:
                 "amount": -5,
                 "transaction_type": "generation",
                 "description": "AI image generation",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             },
             {
                 "transaction_id": "tx_002",
@@ -235,7 +235,7 @@ class TestBillingTransactionHistory:
                 "amount": 100,
                 "transaction_type": "purchase",
                 "description": "Credit purchase",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
             },
         ]
 

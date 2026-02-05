@@ -15,7 +15,7 @@ import logging
 import argparse
 import subprocess
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import boto3
@@ -234,7 +234,7 @@ def cleanup_old_backups() -> int:
             logger.info("没有找到旧备份")
             return 0
         
-        cutoff_date = datetime.utcnow() - timedelta(days=RETENTION_DAYS)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
         deleted_count = 0
         
         for obj in response['Contents']:
@@ -273,7 +273,7 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
     timestamp = start_time.strftime('%Y%m%d_%H%M%S')
     
     logger.info("=" * 50)
@@ -358,7 +358,7 @@ def main():
         cleanup_old_backups()
         
         # 完成
-        duration = (datetime.now() - start_time).total_seconds()
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.info("=" * 50)
         logger.info(f"✅ 备份成功完成！耗时: {duration:.1f}s")
         logger.info(f"   文件: {object_key}")

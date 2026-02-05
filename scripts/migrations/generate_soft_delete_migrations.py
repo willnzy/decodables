@@ -11,7 +11,7 @@
 
 import argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 
 # 定义需要添加软删除的表 (按批次分组)
 
@@ -186,7 +186,7 @@ def generate_batch_migration(batch_number: int) -> str:
     sql = f"""-- ============================================================================
 -- 软删除支持扩展 - {batch_name}
 -- ============================================================================
--- 生成时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+-- 生成时间: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC
 -- 批次: Batch {batch_number}
 -- 表数量: {len(tables)} 张
 --

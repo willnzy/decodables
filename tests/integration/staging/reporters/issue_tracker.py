@@ -10,7 +10,7 @@ import json
 import os
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from enum import Enum
 
@@ -65,8 +65,8 @@ class Issue:
     response_body: Optional[str] = None
     request_id: Optional[str] = None
     test_id: Optional[str] = None
-    first_seen: str = field(default_factory=lambda: datetime.utcnow().isoformat())
-    last_seen: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    first_seen: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    last_seen: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     occurrence_count: int = 1
     root_cause: Optional[str] = None
     fix_commit: Optional[str] = None
@@ -230,7 +230,7 @@ class IssueTracker:
         existing = self._find_existing(endpoint, method, category)
         if existing:
             existing.occurrence_count += 1
-            existing.last_seen = datetime.utcnow().isoformat()
+            existing.last_seen = datetime.now(timezone.utc).isoformat()
             if response_body:
                 existing.response_body = response_body
             return existing
@@ -316,7 +316,7 @@ class IssueTracker:
         # Save index
         index_data = {
             "counter": self._counter,
-            "last_updated": datetime.utcnow().isoformat(),
+            "last_updated": datetime.now(timezone.utc).isoformat(),
             "issues": [issue.to_dict() for issue in self.issues.values()],
         }
         index_file = self.storage_dir / "index.json"
@@ -337,7 +337,7 @@ class IssueTracker:
         lines = [
             "# 问题追踪报告",
             "",
-            f"**生成时间**: {datetime.utcnow().isoformat()}",
+            f"**生成时间**: {datetime.now(timezone.utc).isoformat()}",
             f"**未解决问题**: {len(open_issues)}",
             "",
             "## 按优先级统计",

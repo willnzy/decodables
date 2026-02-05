@@ -13,7 +13,7 @@
 import re
 from pathlib import Path
 from typing import List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def extract_tables_from_sql(sql_content: str, filename: str) -> List[Dict[str, Any]]:
@@ -145,7 +145,7 @@ def generate_markdown_doc() -> str:
     md_lines.append('')
     md_lines.append('## 附录 A: 数据库对象完整清单')
     md_lines.append('')
-    md_lines.append(f'> **自动生成时间**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    md_lines.append(f'> **自动生成时间**: {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} UTC')
     md_lines.append('> **生成脚本**: `scripts/generate_db_schema_doc.py`')
     md_lines.append('> **数据源**: `migrations/v2/*.sql`')
     md_lines.append('')

@@ -188,7 +188,7 @@ async def send_cleanup_notification(total_deleted: int, errors: List[str]):
     status_emoji = "✅" if not errors else "⚠️"
 
     message = f"""
-{status_emoji} 软删除清理报告 ({datetime.now().strftime('%Y-%m-%d %H:%M UTC')})
+{status_emoji} 软删除清理报告 ({datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')})
 
 **总计删除**: {total_deleted} 条记录
 **模式**: {mode}

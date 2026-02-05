@@ -10,7 +10,7 @@ import json
 import os
 from typing import List, Dict, Optional, Any
 from dataclasses import dataclass, field, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -64,7 +64,7 @@ class FailureDetail:
     category: str = "unknown"
     priority: str = "P1"
     request_id: Optional[str] = None
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
 class TestReporter:
@@ -94,8 +94,8 @@ class TestReporter:
         run_id: Optional[str] = None,
     ):
         self.environment = environment
-        self.run_id = run_id or datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        self.start_time = datetime.utcnow()
+        self.run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        self.start_time = datetime.now(timezone.utc)
         self.test_cases: List[TestCase] = []
         self.failures: List[FailureDetail] = []
 
@@ -109,7 +109,7 @@ class TestReporter:
 
     def get_summary(self) -> TestRunSummary:
         """获取测试运行总结"""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         duration = (end_time - self.start_time).total_seconds()
 
         passed = sum(1 for tc in self.test_cases if tc.passed)

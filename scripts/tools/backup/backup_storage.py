@@ -17,7 +17,7 @@ import sys
 import logging
 import argparse
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Dict, Optional, Set
 from io import BytesIO
 
@@ -332,7 +332,7 @@ def main():
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
     
-    start_time = datetime.now()
+    start_time = datetime.now(timezone.utc)
     
     logger.info("=" * 50)
     logger.info("Make Decodables Storage 增量备份开始")
@@ -370,7 +370,7 @@ def main():
             total_stats['failed'] += 1
     
     # 完成
-    duration = (datetime.now() - start_time).total_seconds()
+    duration = (datetime.now(timezone.utc) - start_time).total_seconds()
     
     logger.info("=" * 50)
     logger.info("📊 总计统计:")

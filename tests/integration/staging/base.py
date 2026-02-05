@@ -12,7 +12,7 @@ Base Test Classes and Utilities
 import time
 from typing import Any, Dict, List, Optional, Union
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 import httpx
 
 
@@ -34,7 +34,7 @@ class TestFailure:
     request_params: Optional[Dict] = None
     category: str = "unknown"
     priority: str = "P1"
-    timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    timestamp: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     request_id: Optional[str] = None
 
     def to_dict(self) -> Dict:

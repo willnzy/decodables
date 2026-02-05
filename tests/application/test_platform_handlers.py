@@ -7,7 +7,7 @@ Platform Application Layer Tests - Handlers for feature flags and experiments.
 
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
+from datetime import datetime, timezone
 
 from application.commands.platform import (
     CreateFeatureFlagCommand,
@@ -58,8 +58,8 @@ def sample_feature_flag():
         description="A test feature flag",
         status=FlagStatus.ACTIVE,
         default_value=False,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
 
@@ -71,8 +71,8 @@ def sample_experiment():
         name="Test Experiment",
         description="A test A/B experiment",
         status=ExperimentStatus.RUNNING,
-        created_at=datetime.utcnow(),
-        updated_at=datetime.utcnow(),
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
     )
 
 
