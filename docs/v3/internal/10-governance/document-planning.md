@@ -732,15 +732,17 @@
 
 ### P2 - 补充文档（按需创建）
 
-| 文档 | 位置 |
-|------|------|
-| onboarding.md | 02-product/features/ |
-| feature-flags.md | 02-product/features/ |
-| search/architecture.md | 04-engineering/modules/ |
-| about-us.md | 02-product/pages/user/ |
-| contact-us.md | 02-product/pages/user/ |
-| terms.md | 02-product/pages/user/ |
-| privacy.md | 02-product/pages/user/ |
+| 文档 | 位置 | 状态 |
+|------|------|------|
+| onboarding.md | 02-product/features/ | ✅ 完成 |
+| feature-flags.md | 02-product/features/ | ✅ 完成 |
+| search/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| about-us.md | 02-product/pages/user/ | 🔜 待创建 |
+| contact-us.md | 02-product/pages/user/ | 🔜 待创建 |
+| terms.md | 02-product/pages/user/ | 🔜 待创建 |
+| privacy.md | 02-product/pages/user/ | 🔜 待创建 |
+
+**P2 完成率: 3/7 (43%)**
 
 ---
 
