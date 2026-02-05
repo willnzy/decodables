@@ -3,7 +3,7 @@
 > **版本**: 3.1.0
 > **创建日期**: 2026-02-05
 > **架构设计**: [documentation-architecture-v4.md](internal/10-governance/documentation-architecture-v4.md)
-> **内容规范**: [content-management-rules.md](internal/10-governance/content-management-rules.md)
+> **治理规范**: [documentation-governance.md](internal/10-governance/documentation-governance.md)
 
 ---
 
