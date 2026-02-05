@@ -1,7 +1,7 @@
-# Feature Flag 评估引擎
+# Feature Flag 技术实现
 
 > **同步范围**: [fullstack]
-> **状态**: 🟢 已验证 (来源: 代码分析 + v2 文档)
+> **状态**: 🟢 已验证
 > **版本**: 1.0.0
 > **最后更新**: 2026-02-05
 > **数据来源**: `domains/platform/`, `experiments` 表
@@ -10,20 +10,9 @@
 
 ## 一、概述
 
-### 1.1 核心能力
+Feature Flag 系统的技术实现细节，包括数据结构、评估引擎、API 和前端集成。
 
-| 能力 | 说明 | 使用场景 |
-|------|------|----------|
-| Kill Switch | 全局开关 | 紧急下线功能 |
-| 百分比灰度 | 按比例放量 | 渐进式发布 |
-| A/B 实验 | 多变体测试 | 功能对比测试 |
-| 用户分群 | 指定用户启用 | Beta 测试 |
-
-### 1.2 评估优先级
-
-```
-Kill Switch > 用户 Override > Tier 权限 > Flag 变体
-```
+> **业务规则**: 评估优先级规则见 [权益策略规则](../../../05-business/entitlement/policy-rules.md)
 
 ---
 
@@ -468,9 +457,8 @@ async def evaluate_with_logging(flag_key: str, user_id: UUID):
 
 ## 八、相关文档
 
-- [权益系统设计](../05-business/entitlement/system-design.md)
-- [Feature Flags 功能规格](../02-product/features/feature-flags.md)
-- [A/B 实验指南](../02-standards/ab-testing-guide.md)
+- [权益策略规则](../../../05-business/entitlement/policy-rules.md)
+- [Feature Flags 功能规格](../../../02-product/features/feature-flags.md)
 
 ---
 

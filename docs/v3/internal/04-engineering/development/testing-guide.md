@@ -454,9 +454,9 @@ jobs:
 
 ## 七、相关文档
 
-- [后端架构](../01-architecture/backend.md)
-- [前端架构](../01-architecture/frontend.md)
-- [CI/CD 流程](../../06-operations/ci-cd.md)
+- [集成测试指南](./integration-testing-guide.md)
+- [后端架构](../architecture/backend.md)
+- [前端架构](../architecture/frontend.md)
 
 ---
 

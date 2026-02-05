@@ -200,6 +200,7 @@ docs/v3/
 │       │   ├── faq-template.md
 │       │   └── news-template.md
 │       ├── conventions.md               # 命名规范
+│       ├── classification-principles.md # 🔑 文档分类原则
 │       └── sync-policy.md               # 前后端同步策略
 
 │

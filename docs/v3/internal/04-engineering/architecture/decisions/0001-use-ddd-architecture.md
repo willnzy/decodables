@@ -132,4 +132,4 @@ api → application → domains ← infrastructure
 ## 相关文档
 
 - [后端架构](../backend.md)
-- [模块重构指南](../../guides/MODULE-REFACTOR-SOP.md)
+- [模块重构指南](../../../../.claude/guides/MODULE-REFACTOR-SOP.md)

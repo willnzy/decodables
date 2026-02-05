@@ -179,8 +179,8 @@
 
 ## 六、相关文档
 
-- [Tier 权益详情](../05-business/tier-system/permissions.md)
-- [测试覆盖计划](../../04-engineering/development/testing.md)
+- [Tier 权益详情](./permissions.md)
+- [测试覆盖计划](../../04-engineering/development/testing-guide.md)
 
 ---
 

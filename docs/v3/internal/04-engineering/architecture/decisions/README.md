@@ -1,40 +1,94 @@
 # 架构决策记录 (ADR)
 
 > **同步范围**: [fullstack]
-> **状态**: 🟡 待完善
+> **状态**: 🟢 已验证
 
 ---
 
-## 目录说明
+## 什么是 ADR
 
-记录重要的技术架构决策及其背景和理由。
+ADR (Architecture Decision Record) 是记录重要架构决策的文档，包括:
 
-## 历史 ADR（来自 v1/v2）
+- 决策背景和问题
+- 考虑的选项
+- 最终决策及理由
+- 决策的影响
 
-以下 ADR 已在 v1/v2 中记录，内容仍然有效：
+---
 
-| ADR | 标题 | 状态 | 来源 |
-|-----|------|------|------|
-| ADR-0001 | 使用 DDD 架构 | ✅ 已接受 | v1/adr/, v2/01-architecture/adr/ |
-| ADR-0002 | 数据库驱动配置 | ✅ 已接受 | v1/adr/, v2/01-architecture/adr/ |
+## ADR 列表
 
-## 计划 ADR
+| 编号 | 标题 | 状态 | 日期 |
+|------|------|------|------|
+| [ADR-0001](./0001-use-ddd-architecture.md) | 使用 DDD 架构 | ✅ Active | 2026-01-09 |
+| [ADR-0002](./0002-database-driven-config.md) | 数据库驱动配置 | ✅ Active | 2026-01-09 |
+| [ADR-0003](./0003-dual-credit-model.md) | 双桶积分模型 | ✅ Active | 2026-01-15 |
+| [ADR-0004](./0004-jwt-dual-key-rotation.md) | JWT 双密钥轮换 | ✅ Active | 2026-01-20 |
 
-| ADR | 标题 | 状态 |
-|-----|------|------|
-| ADR-0003 | JWT 认证方案 | 📋 待创建 |
-| ADR-0004 | 积分系统设计 | 📋 待创建 |
-| ADR-0005 | 前端状态管理策略 | 📋 待创建 |
+---
+
+## ADR 状态
+
+| 状态 | 说明 |
+|------|------|
+| ✅ Active | 当前生效 |
+| 🔄 Superseded | 已被新决策取代 |
+| ❌ Deprecated | 已废弃 |
+| 📝 Proposed | 提议中 |
+
+---
 
 ## ADR 命名规范
 
-- 文件名: `adr-XXXX-short-title.md`
+- 文件名: `XXXX-short-title.md`
 - XXXX 为 4 位序号
 - 使用短横线分隔的小写英文
 
-## 模板
+---
 
-使用 [ADR 模板](../../10-governance/templates/adr-template.md)
+## ADR 模板
+
+```markdown
+# ADR-XXXX 标题
+
+**状态**: proposed / active / superseded / deprecated
+**日期**: YYYY-MM-DD
+**决策者**: Team/Person
+
+## 背景
+
+描述问题背景和决策需求。
+
+## 决策
+
+我们决定采用 XXX 方案。
+
+## 考虑的选项
+
+1. **选项 A**: 描述
+   - 优点: ...
+   - 缺点: ...
+
+2. **选项 B**: 描述
+   - 优点: ...
+   - 缺点: ...
+
+## 理由
+
+选择该方案的原因。
+
+## 影响
+
+- 正面影响: ...
+- 负面影响: ...
+- 需要的改动: ...
+
+## 相关文档
+
+- [相关链接]
+```
+
+---
 
 ## 相关文档
 

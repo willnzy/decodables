@@ -438,4 +438,4 @@ async def isolate_test_data(test_db):
 ## 八、相关文档
 
 - [测试指南](./testing-guide.md)
-- [API 端点文档](../04-engineering/api/user-endpoints.md)
+- [API 端点文档](../api/user-endpoints.md)

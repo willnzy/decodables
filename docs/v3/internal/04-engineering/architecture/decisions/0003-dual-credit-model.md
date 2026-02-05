@@ -203,5 +203,5 @@ async def monthly_reset_credits():
 
 ## 相关文档
 
-- [积分系统架构](../../04-engineering/modules/billing/architecture.md)
-- [计费生命周期](../../05-business/entitlement/billing-lifecycle.md)
+- [积分系统架构](../../modules/billing/architecture.md)
+- [计费生命周期](../../../05-business/entitlement/billing-lifecycle.md)

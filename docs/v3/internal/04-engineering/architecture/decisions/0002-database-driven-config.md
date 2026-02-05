@@ -163,5 +163,5 @@ class ConfigService:
 
 ## 相关文档
 
-- [配置系统设计](../../04-engineering/modules/admin/config-ops.md)
-- [Admin API 端点](../../04-engineering/api/admin-endpoints.md)
+- [配置系统设计](../../modules/admin/config-ops.md)
+- [Admin API 端点](../../api/admin-endpoints.md)

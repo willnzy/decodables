@@ -219,5 +219,5 @@ async def rotate_jwt_keys():
 
 ## 相关文档
 
-- [认证模块架构](../../04-engineering/modules/auth/architecture.md)
-- [API 参考 - 认证](../../04-engineering/api/api-reference.md)
+- [认证模块架构](../../modules/auth/architecture.md)
+- [API 参考 - 认证](../../api/api-reference.md)

@@ -372,6 +372,6 @@ python -m alembic downgrade -1
 
 ## 九、相关文档
 
-- [日志标准](../02-standards/logging-standard.md)
-- [测试指南](../02-standards/testing-guide.md)
+- [日志标准](../04-engineering/development/logging-standard.md)
+- [测试指南](../04-engineering/development/testing-guide.md)
 - [Admin 系统运维](../04-engineering/modules/admin/system-ops.md)

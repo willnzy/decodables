@@ -293,4 +293,4 @@ logging:
 ## 十、相关文档
 
 - [测试指南](./testing-guide.md)
-- [部署与扩展](../06-operations/deployment-scaling.md)
+- [部署与扩展](../../08-operations/deployment-scaling.md)
