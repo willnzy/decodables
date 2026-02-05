@@ -676,55 +676,59 @@
 
 ### P0 - 核心文档（优先创建）
 
-| 文档 | 位置 |
-|------|------|
-| tech-stack.md | 01-project/ |
-| editor.md | 02-product/features/ |
-| templates.md | 02-product/features/ |
-| auth.md | 02-product/features/ |
-| credits.md | 02-product/features/ |
-| overview.md | 04-engineering/architecture/ |
-| backend.md | 04-engineering/architecture/ |
-| frontend.md | 04-engineering/architecture/ |
-| database.md | 04-engineering/architecture/ |
-| editor/architecture.md | 04-engineering/modules/ |
-| billing/architecture.md | 04-engineering/modules/ |
-| auth/architecture.md | 04-engineering/modules/ |
-| ai/architecture.md | 04-engineering/modules/ |
-| tier-benefits.md | 05-business/tier-system/ |
-| credits-flow.md | 05-business/credits-system/ |
-| getting-started/index.md | public/manual/ |
-| editor/index.md | public/manual/ |
+| 文档 | 位置 | 状态 |
+|------|------|------|
+| tech-stack.md | 01-project/ | ✅ 完成 |
+| editor.md | 02-product/features/ | ✅ 完成 |
+| templates.md | 02-product/features/ | ✅ 完成 |
+| auth.md | 02-product/features/ | ✅ 完成 |
+| credits.md | 02-product/features/ | ✅ 完成 |
+| overview.md | 04-engineering/architecture/ | ✅ 完成 |
+| backend.md | 04-engineering/architecture/ | ✅ 完成 |
+| frontend.md | 04-engineering/architecture/ | ✅ 完成 |
+| database.md | 04-engineering/architecture/ | ✅ 完成 |
+| editor/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| billing/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| auth/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| ai/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| tier-benefits.md | 05-business/tier-system/ | ✅ 完成 |
+| credits-flow.md | 05-business/credits-system/ | ✅ 完成 |
+| getting-started/index.md | public/manual/ | ✅ 完成 |
+| editor/index.md | public/manual/ | ✅ 完成 |
+
+**P0 完成率: 17/17 (100%)**
 
 ### P1 - 重要文档（次优先）
 
-| 文档 | 位置 |
-|------|------|
-| vision.md | 01-project/ |
-| dashboard.md | 02-product/features/ |
-| marketplace.md | 02-product/features/ |
-| ai-generation.md | 02-product/features/ |
-| subscription.md | 02-product/features/ |
-| profile.md | 02-product/features/ |
-| search.md | 02-product/features/ |
-| favorites.md | 02-product/features/ |
-| notifications.md | 02-product/features/ |
-| file-import.md | 02-product/features/ |
-| file-export.md | 02-product/features/ |
-| dashboard/architecture.md | 04-engineering/modules/ |
-| marketplace/architecture.md | 04-engineering/modules/ |
-| platform/architecture.md | 04-engineering/modules/ |
-| notifications/architecture.md | 04-engineering/modules/ |
-| profile/architecture.md | 04-engineering/modules/ |
-| colors.md | 03-design/tokens/ |
-| typography.md | 03-design/tokens/ |
-| buttons.md | 03-design/components/ |
-| user-lifecycle.md | 05-business/user-system/ |
-| pricing-strategy.md | 05-business/pricing/ |
-| glossary.md | 11-reference/ |
-| feature-matrix.md | 11-reference/ |
-| error-codes.md | 11-reference/ |
-| general.md | public/faq/ |
+| 文档 | 位置 | 状态 |
+|------|------|------|
+| vision.md | 01-project/ | ✅ 完成 |
+| dashboard.md | 02-product/features/ | ✅ 完成 |
+| marketplace.md | 02-product/features/ | ✅ 完成 |
+| ai-generation.md | 02-product/features/ | ✅ 完成 |
+| subscription.md | 02-product/features/ | ✅ 完成 |
+| profile.md | 02-product/features/ | ✅ 完成 |
+| search.md | 02-product/features/ | ✅ 完成 |
+| favorites.md | 02-product/features/ | ✅ 完成 |
+| notifications.md | 02-product/features/ | ✅ 完成 |
+| file-import.md | 02-product/features/ | ✅ 完成 |
+| file-export.md | 02-product/features/ | ✅ 完成 |
+| dashboard/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| marketplace/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| platform/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| notifications/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| profile/architecture.md | 04-engineering/modules/ | ✅ 完成 |
+| colors.md | 03-design/tokens/ | ✅ 完成 |
+| typography.md | 03-design/tokens/ | ✅ 完成 |
+| buttons.md | 03-design/components/ | ✅ 完成 |
+| user-lifecycle.md | 05-business/user-system/ | ✅ 完成 |
+| pricing-strategy.md | 05-business/pricing/ | ✅ 完成 |
+| glossary.md | 11-reference/ | ✅ 完成 |
+| feature-matrix.md | 11-reference/ | ✅ 完成 |
+| error-codes.md | 11-reference/ | ✅ 完成 |
+| general.md | public/faq/ | ✅ 完成 |
+
+**P1 完成率: 25/25 (100%)**
 
 ### P2 - 补充文档（按需创建）
 
