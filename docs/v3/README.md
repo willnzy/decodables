@@ -1,8 +1,9 @@
 # Make Decodables 文档中心 v3
 
-> **版本**: 3.0.0
+> **版本**: 3.1.0
 > **创建日期**: 2026-02-05
 > **架构设计**: [documentation-architecture-v4.md](internal/10-governance/documentation-architecture-v4.md)
+> **内容规范**: [content-management-rules.md](internal/10-governance/content-management-rules.md)
 
 ---
 
@@ -32,6 +33,18 @@
 | [news](public/news/) | 产品动态 | 网站 /news + 社媒 |
 | [legal](public/legal/) | 法律文档 | 网站法律页 |
 | [ai-knowledge-base](public/ai-knowledge-base/) | AI 客服知识库 | Help AI 客服 |
+
+### ⏳ tmp/（临时文档）
+
+| 目录 | 说明 | 清理规则 |
+|------|------|----------|
+| [working](tmp/working/) | 进行中的分析 | 完成后 → to-sync 或删除 |
+| [to-sync](tmp/to-sync/) | 待同步到正式文档 | 同步后立即删除 |
+| [disposable](tmp/disposable/) | 临时笔记 | 用完立即删除 |
+
+### 🗄️ archive/（归档）
+
+存放 v1/v2 旧文档，仅供参考，不再更新。
 
 ---
 
