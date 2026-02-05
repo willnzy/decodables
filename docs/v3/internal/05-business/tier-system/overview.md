@@ -34,8 +34,8 @@ tier TEXT NOT NULL DEFAULT 't1' CHECK (tier IN ('t1', 't2', 't3', 't4'))
 | 系统代码 | 简称 | 显示名称 | 月费 (原价/现价) | 月度积分 | 主题色 |
 |----------|------|----------|------------------|----------|--------|
 | `t1` | First Tier | **Free Plan** | $0 | 0 | 🟢 Emerald `#10B981` |
-| `t2` | Second Tier | **Starter Plan** | $14.90 / $9.90 | 200 | 🔵 Blue `#3B82F6` |
-| `t3` | Third Tier | **Pro Plan** | $29.90 / $19.90 | 500 | 🟣 Violet `#7C3AED` |
+| `t2` | Second Tier | **Starter Plan** | $9.9 / $6.9 | 100 | 🔵 Blue `#3B82F6` |
+| `t3` | Third Tier | **Pro Plan** | $15.9 / $9.9 | 200 | 🟣 Violet `#7C3AED` |
 | `t4` | Fourth Tier | **(预留)** | 待定 | 待定 | 预留 |
 
 ### 2.2 Tier 等级比较
@@ -97,7 +97,7 @@ if user.tier == "t2":  # 应该使用常量 TIER_T2
 
 | 权益 | t1 (Free) | t2 (Starter) | t3 (Pro) |
 |------|-----------|--------------|----------|
-| 月度积分 | 0 | 200 | 500 |
+| 月度积分 | 0 | 100 | 200 |
 | 项目数量 | 3 | 50 | 无限 |
 | 素材存储 | 100 MB | 5 GB | 20 GB |
 | 导出水印 | 有 | 无 | 无 |
