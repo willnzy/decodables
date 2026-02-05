@@ -23,7 +23,6 @@
 | [08-operations](internal/08-operations/) | 运维 | 部署监控 |
 | [09-compliance](internal/09-compliance/) | 合规 | 法务要求 |
 | [10-governance](internal/10-governance/) | 文档治理 | 模板规范 |
-| [11-reference](internal/11-reference/) | 参考资料 | 术语表、速查 |
 
 ### 📢 Public（外部内容）
 
@@ -42,10 +41,6 @@
 | [working](tmp/working/) | 进行中的分析 | 完成后 → to-sync 或删除 |
 | [to-sync](tmp/to-sync/) | 待同步到正式文档 | 同步后立即删除 |
 | [disposable](tmp/disposable/) | 临时笔记 | 用完立即删除 |
-
-### 🗄️ archive/（归档）
-
-存放 v1/v2 旧文档，仅供参考，不再更新。
 
 ---
 
@@ -110,16 +105,16 @@ public/manual/ + public/faq/    →   public/ai-knowledge-base/
 
 ## 前后端同步
 
-| 文档类型 | 同步要求 |
-|----------|----------|
-| 业务规则 (`05-business/`) | ✅ 两边保持一致 |
-| 技术文档 (`04-engineering/`) | ⚠️ 按 scope 区分 |
-| 外部内容 (`public/`) | 📍 仅前端仓库 |
+**策略**: 前后端 `docs/v3/` 保持完全镜像一致
+
+| 操作 | 说明 |
+|------|------|
+| 修改任一仓库 | 同步到另一仓库 |
+| 版本管理 | 使用 git，不需要 archive 目录 |
 
 ---
 
 ## 版本说明
 
-- **v1**: 原始文档（已归档）
-- **v2**: 重构中间版本
+- **v1/v2**: 历史版本（通过 git history 查看）
 - **v3**: 当前版本 - internal/public 分离架构
