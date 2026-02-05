@@ -1,327 +1,201 @@
 # News 文章模板
 
-> 本模板用于编写 `public/news/` 中的内容文章。
-> News 内容用于：网站 News 页面 + SEO/GEO + 社媒运营
+> **版本**: 1.0.0
+> **创建日期**: 2026-02-05
+> **用途**: 用于 `public/news/` 目录下的产品动态文章
 
 ---
 
-## 文章类型
+## 使用说明
 
-| 类型 | 目录 | 用途 | 发布频率 |
-|------|------|------|----------|
-| **releases** | `news/releases/` | 版本发布公告 | 每次发版 |
-| **tutorials** | `news/tutorials/` | 教程文章（SEO） | 每周 1-2 篇 |
-| **use-cases** | `news/use-cases/` | 使用案例（SEO） | 每月 2-4 篇 |
-| **announcements** | `news/announcements/` | 重要公告 | 按需 |
+News 文章用于网站 News 页面和社媒运营，需要 SEO 友好且适合分享。
 
 ---
 
-## 通用元数据
+## 模板
 
-```yaml
+```markdown
 ---
-title: 文章标题
-slug: url-friendly-slug
-type: release | tutorial | use-case | announcement
-status: draft | review | published
-publish_date: YYYY-MM-DD
-author: Make Decodables Team
-reading_time: N min
-featured_image: /images/news/xxx.jpg
-
-# SEO
-seo_title: SEO 标题（60字符内）
-seo_description: SEO 描述（160字符内）
-seo_keywords: [keyword1, keyword2, keyword3]
-
-# 社媒
-social_ready: true
-social_image: /images/news/xxx-social.jpg
+title: "{文章标题}"
+slug: "{url-friendly-slug}"
+date: "YYYY-MM-DD"
+author: "Make Decodables Team"
+category: "功能更新" | "产品动态" | "使用技巧" | "案例分享"
+tags: ["tag1", "tag2", "tag3"]
+excerpt: "{文章摘要，用于列表页和社媒分享，50-100字}"
+image: "/images/news/{image-name}.jpg"
 ---
+
+# {文章标题}
+
+{引言段落：吸引读者注意，说明文章价值，2-3句话}
+
+---
+
+## {一级标题}
+
+{正文内容}
+
+### {二级标题}（如需要）
+
+{详细内容}
+
+> **提示**: 重要信息或引用
+
+---
+
+## {一级标题}
+
+{正文内容}
+
+![图片描述](/images/news/xxx.jpg)
+*图片说明文字*
+
+---
+
+## 总结
+
+{总结要点，呼吁行动}
+
+---
+
+## 相关阅读
+
+- [相关文章 1](/news/xxx)
+- [相关文章 2](/news/xxx)
+- [帮助文档](/manual/xxx)
 ```
 
 ---
 
-## 模板 1: 版本发布 (releases)
+## 文章类型指南
 
-```markdown
+### 功能更新
+
+**适用场景**: 新功能上线、功能改进
+
+**结构**:
+1. 功能介绍
+2. 使用方法
+3. 应用场景
+4. 如何开始使用
+
+**示例标题**:
+- "全新 AI 生图功能上线，创作更轻松"
+- "编辑器升级：支持更多导出格式"
+
+### 产品动态
+
+**适用场景**: 里程碑、公司动态
+
+**结构**:
+1. 动态概述
+2. 详细内容
+3. 对用户的意义
+4. 未来展望
+
+**示例标题**:
+- "Make Decodables 用户突破 10 万"
+- "2026 年产品路线图发布"
+
+### 使用技巧
+
+**适用场景**: 教程、最佳实践
+
+**结构**:
+1. 问题/需求描述
+2. 解决方案
+3. 步骤说明
+4. 进阶技巧
+
+**示例标题**:
+- "5 个技巧让你的设计更专业"
+- "如何用 AI 快速生成完美配图"
+
+### 案例分享
+
+**适用场景**: 用户案例、应用场景
+
+**结构**:
+1. 案例背景
+2. 解决方案
+3. 实际效果
+4. 经验总结
+
+**示例标题**:
+- "老师如何用 Make Decodables 制作教学材料"
+- "创业者的设计神器：效率提升 10 倍"
+
 ---
-title: Make Decodables v2.5 发布：全新 AI 生图功能
-slug: v2-5-release-ai-generation
-type: release
-status: published
-publish_date: 2026-02-05
-author: Make Decodables Team
-reading_time: 3 min
-featured_image: /images/news/v2-5-release.jpg
 
-seo_title: Make Decodables v2.5 发布 - 全新 AI 生图功能 | Make Decodables
-seo_description: Make Decodables v2.5 版本发布，带来全新 AI 生图功能，一键生成高质量 Decodable 插图。
-seo_keywords: [decodable maker, AI illustration, education tool]
+## SEO 优化清单
 
-social_ready: true
----
+### 标题
 
-# Make Decodables v2.5 发布：全新 AI 生图功能
+- [ ] 包含主要关键词
+- [ ] 长度 20-60 字符
+- [ ] 有吸引力，引发点击
 
-我们很高兴地宣布 Make Decodables v2.5 版本正式发布！
+### 摘要
 
-## 🎨 新功能亮点
+- [ ] 包含关键词
+- [ ] 长度 50-100 字
+- [ ] 概括文章核心内容
 
-### AI 生图功能
-（功能介绍...）
+### 正文
 
-### 性能优化
-（优化内容...）
+- [ ] 关键词自然分布
+- [ ] 使用 H2/H3 标题结构
+- [ ] 包含内部链接
+- [ ] 图片有 alt 描述
 
-## 🔧 改进与修复
-- 修复了 xxx 问题
-- 优化了 xxx 体验
+### 元数据
 
-## 🚀 如何体验
-1. 登录 Make Decodables
-2. 打开任意项目
-3. 点击「AI 生图」按钮
-
-## 📚 相关资源
-- [AI 生图使用指南](/manual/editor/ai-features)
-- [完整更新日志](/changelog)
+- [ ] slug 简短且包含关键词
+- [ ] tags 准确且相关
+- [ ] image 有吸引力
 
 ---
 
-## 社媒文案
+## 社媒分享指南
 
-### Twitter (280字符)
-🎨 Make Decodables v2.5 is here! 
-New AI illustration feature - create stunning decodable images in seconds.
-Try it now 👉 [link]
-#EdTech #AIEducation #Decodables
+### Twitter/X
 
-### Facebook
-🎉 Exciting news! Make Decodables v2.5 is now live!
+**字数**: ≤ 280 字符
 
-What's new:
-✨ AI-powered illustration generation
-⚡ 50% faster loading times
-🎯 Improved export quality
+**格式**:
+```
+{核心内容} {emoji}
 
-Create beautiful decodables faster than ever. Try it free today!
-[link]
+{亮点 1}
+{亮点 2}
+
+{链接} #MakeDecodables #标签
+```
 
 ### LinkedIn
-We're thrilled to announce Make Decodables v2.5!
 
-This release introduces our AI illustration feature, designed to help educators create engaging decodable content more efficiently.
+**字数**: 150-300 字
 
-Key highlights:
-• AI-generated illustrations that match your content
-• Significant performance improvements
-• Enhanced export options
+**格式**:
+```
+{引言，制造共鸣}
 
-Learn more: [link]
+{核心内容}
 
-#EdTech #EducationTechnology #AI #ProductUpdate
+{行动呼吁}
+
+{链接}
 ```
 
----
+### 微信/微博
 
-## 模板 2: 教程文章 (tutorials)
+**字数**: 100-200 字
 
-```markdown
----
-title: 如何用 Make Decodables 创建你的第一个 Decodable
-slug: how-to-create-first-decodable
-type: tutorial
-status: published
-publish_date: 2026-02-05
-author: Make Decodables Team
-reading_time: 5 min
-featured_image: /images/news/tutorial-first-decodable.jpg
-
-seo_title: 如何创建 Decodable - 新手教程 | Make Decodables
-seo_description: 5 分钟学会使用 Make Decodables 创建专业的 Decodable 教材，适合教师和家长。
-seo_keywords: [create decodable, decodable tutorial, how to make decodable, reading instruction]
-
-social_ready: true
----
-
-# 如何用 Make Decodables 创建你的第一个 Decodable
-
-> 预计阅读时间：5 分钟
-> 难度：初级
-
-## 什么是 Decodable？
-
-（简要介绍...）
-
-## 准备工作
-
-在开始之前，你需要：
-- [ ] 注册 Make Decodables 账号（免费）
-- [ ] 准备好你的故事内容
-
-## 步骤 1：创建新项目
-
-（详细步骤 + 截图...）
-
-## 步骤 2：添加文字
-
-（详细步骤 + 截图...）
-
-## 步骤 3：添加图片
-
-（详细步骤 + 截图...）
-
-## 步骤 4：导出分享
-
-（详细步骤 + 截图...）
-
-## 小技巧
-
-💡 **提示 1**：xxx
-💡 **提示 2**：xxx
-
-## 下一步
-
-- [进阶教程：使用 AI 功能](/news/tutorials/ai-features-guide)
-- [查看模板库获取灵感](/marketplace)
-
-## 常见问题
-
-**Q: 免费账号可以创建几个项目？**
-A: 免费账号可以创建无限数量的项目。
-
----
-
-## 社媒文案
-
-### Twitter
-📚 New tutorial: Create your first decodable in 5 minutes!
-Perfect for teachers and parents getting started.
-Step-by-step guide 👉 [link]
-#Literacy #TeacherTools #Decodables
-
-### Facebook
-Want to create professional decodables but don't know where to start?
-
-Our new step-by-step tutorial shows you how to:
-✅ Set up your first project
-✅ Add text and images
-✅ Export and share
-
-No design skills needed! Read the full guide: [link]
-
-### Pinterest (图片描述)
-How to Create a Decodable in 5 Minutes - Step by Step Tutorial for Teachers and Parents | Make Decodables
+**格式**:
 ```
-
----
-
-## 模板 3: 使用案例 (use-cases)
-
-```markdown
----
-title: 教师 Sarah 如何用 Make Decodables 改变她的阅读课堂
-slug: teacher-sarah-classroom-story
-type: use-case
-status: published
-publish_date: 2026-02-05
-author: Make Decodables Team
-reading_time: 4 min
-featured_image: /images/news/case-study-sarah.jpg
-
-seo_title: 教师成功案例：Make Decodables 改变阅读教学 | Make Decodables
-seo_description: 了解教师 Sarah 如何使用 Make Decodables 为学生创建个性化 Decodable，提升阅读教学效果。
-seo_keywords: [teacher success story, decodable classroom, reading instruction, phonics teaching]
-
-social_ready: true
----
-
-# 教师 Sarah 如何用 Make Decodables 改变她的阅读课堂
-
-> "Make Decodables 让我能够为每个学生创建适合他们水平的阅读材料。" —— Sarah M., 小学教师
-
-## 背景
-
-Sarah 是一位有 8 年教龄的小学教师...（故事背景）
-
-## 挑战
-
-（描述她面临的问题）
-
-## 解决方案
-
-（她如何使用 Make Decodables）
-
-## 成果
-
-- 📈 学生阅读参与度提升 40%
-- ⏱️ 备课时间减少 60%
-- 🎯 个性化教学成为可能
-
-## Sarah 的使用技巧
-
-1. **技巧一**：xxx
-2. **技巧二**：xxx
-3. **技巧三**：xxx
-
-## 立即开始
-
-想要像 Sarah 一样改变你的课堂？[免费注册 Make Decodables](/signup)
-
----
-
-## 社媒文案
-
-### Twitter
-📖 "Make Decodables changed how I teach reading." 
-See how teacher Sarah boosted student engagement by 40%.
-Read her story 👉 [link]
-#TeacherStories #EdTech #ReadingInstruction
-
-### Facebook
-Meet Sarah, a teacher who transformed her reading classroom with Make Decodables.
-
-Her results:
-📈 40% increase in student engagement
-⏱️ 60% less prep time
-🎯 Personalized learning for every student
-
-Read her full story and discover how you can do the same: [link]
-
-### LinkedIn
-Case Study: How one teacher revolutionized her reading instruction
-
-Sarah M., an elementary school teacher with 8 years of experience, faced a common challenge: creating engaging, level-appropriate reading materials for her diverse classroom.
-
-After adopting Make Decodables, she saw remarkable results:
-• 40% increase in student reading engagement
-• 60% reduction in preparation time
-• Ability to personalize content for each student's needs
-
-Read the full case study: [link]
-
-#EdTech #CaseStudy #ReadingInstruction #TeacherSuccess
+【{标题}】
+{核心内容}
+{亮点列表}
+{链接或二维码}
 ```
-
----
-
-## SEO 检查清单
-
-- [ ] 标题包含主要关键词
-- [ ] URL slug 简洁且包含关键词
-- [ ] Meta description 在 160 字符内且包含 CTA
-- [ ] 文章长度 ≥ 800 字（教程）或 ≥ 500 字（案例）
-- [ ] 包含 2-3 个内部链接
-- [ ] 包含 1 个外部权威链接（如适用）
-- [ ] 图片有 alt 文本
-- [ ] H1/H2/H3 结构清晰
-
-## 社媒检查清单
-
-- [ ] Twitter 文案 ≤ 280 字符
-- [ ] Facebook 文案 150-300 字
-- [ ] LinkedIn 文案 200-400 字
-- [ ] 包含 CTA 和链接
-- [ ] 包含 2-4 个相关 hashtag
-- [ ] 社媒图片尺寸正确（1200x630 推荐）

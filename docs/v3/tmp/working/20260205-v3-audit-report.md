@@ -2,7 +2,7 @@
 
 > **审计日期**: 2026-02-05
 > **审计范围**: docs/v3/ 全部目录和文档
-> **状态**: ✅ 阶段1+2 已完成（2026-02-05）
+> **状态**: ✅ 阶段1+2+3 已完成（2026-02-05）
 
 ---
 
@@ -186,10 +186,17 @@ v1 有一些重要文档未在 v3 中明确映射：
 4. ✅ 创建 `adr-template.md` - 已完成
 5. ✅ 创建 `04-engineering/architecture/decisions/` 目录 - 已完成
 
-### 阶段 3：格式统一（P2）
+### 阶段 3：格式统一（P2）✅ 已完成
 
-1. 统一所有 README 的表格格式
-2. 创建其他模板
+1. ✅ 统一 07-analytics/README.md 格式 - 已完成
+2. ✅ 统一 08-operations/README.md 格式 - 已完成
+3. ✅ 创建 module-readme-template.md - 已完成
+4. ✅ 创建 feature-spec-template.md - 已完成
+5. ✅ 创建 page-design-template.md - 已完成
+6. ✅ 创建 api-reference-template.md - 已完成
+7. ✅ 创建 faq-template.md - 已完成（原已存在，已更新）
+8. ✅ 创建 news-template.md - 已完成（原已存在，已更新）
+9. ✅ 更新 templates/README.md - 已完成
 
 ---
 
