@@ -2,9 +2,11 @@
 
 > Entitlement System - 用户权限、配额、功能控制
 
-> **同步范围**: [fullstack]
+> **版本**: 1.0.0
+> **创建日期**: 2026-02-05
 > **状态**: 🟢 已验证
-> **最后更新**: 2026-02-05
+> **同步范围**: [fullstack]
+> **数据来源**: `domains/billing/`, `domains/platform/`
 
 ---
 

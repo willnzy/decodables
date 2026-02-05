@@ -1,5 +1,9 @@
 # 用户手册
 
+> **版本**: 1.0.0
+> **创建日期**: 2026-02-05
+> **状态**: 🟡 内容待补充
+> **同步范围**: [fullstack]
 > **输出到**: 网站 /manual 页面
 > **来源**: internal/02-product/features/ + internal/05-business/
 
