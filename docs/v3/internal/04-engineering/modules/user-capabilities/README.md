@@ -20,6 +20,8 @@
 | 资产系统 | [assets-system.md](./assets-system.md) | 🟢 Active | 用户资产上传、管理、收藏夹 |
 | 主题系统 | [theme-system.md](./theme-system.md) | 🟢 Active | 主题/Daily Doodle 展示 |
 | 推荐系统 | [referrals-system.md](./referrals-system.md) | 🟢 Active | 用户推荐与返利 |
+| 分析系统 | [analytics-system.md](./analytics-system.md) | 🟢 Active | 用户行为追踪与分析 |
+| 支持系统 | [support-system.md](./support-system.md) | 🟡 Draft | 客服工单与反馈 |
 
 ---
 
