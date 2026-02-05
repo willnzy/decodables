@@ -7,20 +7,37 @@
 
 ## 目录说明
 
-记录重大技术决策的 ADR (Architecture Decision Record)。
+记录重要的技术架构决策及其背景和理由。
 
-## ADR 列表
+## 历史 ADR（来自 v1/v2）
 
-| 编号 | 标题 | 状态 | 日期 |
-|------|------|------|------|
-| - | 暂无 | - | - |
+以下 ADR 已在 v1/v2 中记录，内容仍然有效：
 
-## ADR 模板
+| ADR | 标题 | 状态 | 来源 |
+|-----|------|------|------|
+| ADR-0001 | 使用 DDD 架构 | ✅ 已接受 | v1/adr/, v2/01-architecture/adr/ |
+| ADR-0002 | 数据库驱动配置 | ✅ 已接受 | v1/adr/, v2/01-architecture/adr/ |
 
-详见 `10-governance/templates/adr-template.md`
+## 计划 ADR
 
-## 何时创建 ADR
+| ADR | 标题 | 状态 |
+|-----|------|------|
+| ADR-0003 | JWT 认证方案 | 📋 待创建 |
+| ADR-0004 | 积分系统设计 | 📋 待创建 |
+| ADR-0005 | 前端状态管理策略 | 📋 待创建 |
 
-- 重大技术选型（框架、数据库、第三方服务）
-- 架构模式变更
-- 有多个候选方案且做过对比分析
+## ADR 命名规范
+
+- 文件名: `adr-XXXX-short-title.md`
+- XXXX 为 4 位序号
+- 使用短横线分隔的小写英文
+
+## 模板
+
+使用 [ADR 模板](../../10-governance/templates/adr-template.md)
+
+## 相关文档
+
+- [架构总览](../overview.md)
+- [后端架构](../backend.md)
+- [前端架构](../frontend.md)

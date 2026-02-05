@@ -90,37 +90,39 @@ pages/user/README.md 缺少一些页面：
 | 03-design/tokens/shadows.md | 阴影系统 |
 | 03-design/components/ | forms.md, modals.md 等 |
 
-### 🟡 问题 6：07-analytics 和 08-operations 内容不一致
+### 🟡 问题 6：07-analytics 和 08-operations 内容不一致 ✅ 已修复
 
-这两个 README 已经包含了详细内容大纲，但格式与其他 README 不一致：
-- 包含了 `内容大纲` 而不是 `计划文档`
-- 内容更详细，但格式不统一
+~~这两个 README 已经包含了详细内容大纲，但格式与其他 README 不一致~~
 
-**建议**：保持格式统一，或明确这是"已完成"的 README。
+**修复**：已统一格式，保留有价值的参考内容
 
-### 🟡 问题 7：entitlement 设计文档整合
+### 🟡 问题 7：entitlement 设计文档整合 ✅ 已处理
 
-v1/shared/entitlement/ 有 28 个文档，但 v3 的 planned/ 目录是空的。
+~~v1/shared/entitlement/ 有 28 个文档，但 v3 的 planned/ 目录是空的~~
 
-**建议**：
-1. 明确 entitlement 重构后是否还需要这些文档
-2. 如果需要，创建 planned/ 下的规划清单
+**现状**：
+- `05-business/entitlement/planned/README.md` 已包含完整规划
+- 明确指向 v1 源文档（28 个文档）
+- 定义了重构优先级 (P0/P1/P2)
+- 不需要额外迁移，v1 文档作为参考保留
 
-### 🟡 问题 8：ADR 模板缺失
+### 🟡 问题 8：ADR 模板缺失 ✅ 已修复
 
-document-outlines.md 提到了 ADR 模板，但 templates/ 下没有 `adr-template.md`。
+~~document-outlines.md 提到了 ADR 模板，但 templates/ 下没有 `adr-template.md`~~
 
-### 🟡 问题 9：v1 重要文档未映射
+**修复**：已创建 `10-governance/templates/adr-template.md`
 
-v1 有一些重要文档未在 v3 中明确映射：
+### 🟡 问题 9：v1 重要文档未映射 ✅ 已处理
 
-| v1 文档 | 建议 v3 位置 |
-|---------|--------------|
-| adr/0001-use-ddd-architecture.md | 04-engineering/architecture/decisions/ |
-| adr/0002-database-driven-config.md | 04-engineering/architecture/decisions/ |
-| shared/self-hosted-auth-design.md | 04-engineering/modules/auth/ 或 decisions/ |
-| shared/pricing-system-design.md | 05-business/pricing/ |
-| shared/analytics-system-design.md | 07-analytics/ |
+**修复**：
+- 创建 `04-engineering/architecture/decisions/README.md`
+- 映射 v1/v2 的 ADR 文档
+- 规划新的 ADR 文档 (ADR-0003/0004/0005)
+
+| v1 文档 | v3 处理方式 |
+|---------|-------------|
+| adr/0001, adr/0002 | 在 decisions/README.md 中引用 |
+| shared/* 设计文档 | 作为 v3 文档创建的参考来源 |
 
 ### 🟢 问题 10：格式不一致（小问题）
 
