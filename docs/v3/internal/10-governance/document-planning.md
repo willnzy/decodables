@@ -138,6 +138,134 @@
 ## 六、验收标准
 ```
 
+### 2.6 templates.md (P0)
+```
+# 模板功能规格
+## 一、概述
+## 二、功能范围
+  - 模板浏览
+  - 模板预览
+  - 模板使用
+  - 模板保存
+## 三、用户故事
+## 四、功能详情
+## 五、UI/交互
+## 六、验收标准
+```
+
+### 2.7 profile.md (P1)
+```
+# 个人主页功能规格
+## 一、概述
+## 二、功能范围
+  - 个人信息展示
+  - 信息编辑
+  - 头像管理
+## 三、用户故事
+## 四、功能详情
+## 五、验收标准
+```
+
+### 2.8 auth.md (P0)
+```
+# 认证功能规格
+## 一、概述
+## 二、功能范围
+  - 登录
+  - 注册
+  - 找回密码
+  - OTP 验证
+## 三、用户故事
+## 四、功能详情
+## 五、安全要求
+## 六、验收标准
+```
+
+### 2.9 credits.md (P0)
+```
+# 积分功能规格
+## 一、概述
+## 二、功能范围
+  - 积分查询
+  - 积分充值
+  - 积分消费
+  - 积分历史
+## 三、用户故事
+## 四、功能详情
+## 五、业务规则
+## 六、验收标准
+```
+
+### 2.10 search.md (P1)
+```
+# 搜索功能规格
+## 一、概述
+## 二、功能范围
+  - 全局搜索
+  - 素材搜索
+  - 模板搜索
+  - 作品搜索
+## 三、用户故事
+## 四、功能详情
+## 五、验收标准
+```
+
+### 2.11 favorites.md (P1)
+```
+# 收藏功能规格
+## 一、概述
+## 二、功能范围
+  - 添加收藏
+  - 取消收藏
+  - 收藏列表
+  - 收藏分类
+## 三、用户故事
+## 四、功能详情
+## 五、验收标准
+```
+
+### 2.12 notifications.md (P1)
+```
+# 通知功能规格
+## 一、概述
+## 二、功能范围
+  - 通知列表
+  - 通知详情
+  - 标记已读
+  - 通知设置
+## 三、用户故事
+## 四、功能详情
+## 五、验收标准
+```
+
+### 2.13 file-import.md (P1)
+```
+# 文件导入功能规格
+## 一、概述
+## 二、功能范围
+  - 支持格式（PNG/SVG/PDF）
+  - 导入流程
+  - 格式转换
+## 三、用户故事
+## 四、功能详情
+## 五、技术约束
+## 六、验收标准
+```
+
+### 2.14 file-export.md (P1)
+```
+# 文件导出功能规格
+## 一、概述
+## 二、功能范围
+  - 支持格式（PNG/JPG/PDF/SVG）
+  - 导出质量
+  - 批量导出
+## 三、用户故事
+## 四、功能详情
+## 五、技术约束
+## 六、验收标准
+```
+
 ---
 
 ## 三、04-engineering/architecture/ 架构文档
@@ -258,6 +386,109 @@
   - Token 验证
 ## 五、会话管理
 ## 六、安全措施
+```
+
+### 4.4 dashboard/architecture.md (P1)
+```
+# 仪表盘模块架构
+## 一、模块概述
+## 二、代码结构
+  - 后端（workspace, folder, stats）
+  - 前端（app/dashboard, stores/dashboard）
+## 三、作品管理
+  - 作品列表
+  - 作品状态
+## 四、文件夹管理
+## 五、数据流
+## 六、性能优化
+```
+
+### 4.5 marketplace/architecture.md (P1)
+```
+# 素材市场模块架构
+## 一、模块概述
+## 二、代码结构
+  - 后端（marketplace, assets, content, themes）
+  - 前端（app/marketplace, stores/marketplace）
+## 三、素材管理
+  - 素材类型
+  - 素材分类
+## 四、搜索筛选
+## 五、数据流
+## 六、缓存策略
+```
+
+### 4.6 ai/architecture.md (P0)
+```
+# AI 服务模块架构
+## 一、模块概述
+## 二、代码结构
+  - 后端（generation, shared/ai, text_processing, image_processing）
+  - 前端（stores/ai）
+## 三、AI 生图服务
+  - FAL.ai 集成
+  - 请求流程
+## 四、OCR 服务
+## 五、积分消耗
+## 六、错误处理
+## 七、性能优化
+```
+
+### 4.7 platform/architecture.md (P1)
+```
+# 平台服务模块架构
+## 一、模块概述
+## 二、代码结构
+  - 后端（platform, feature_flags, onboarding, events）
+  - 前端（@core/platform）
+## 三、Feature Flags
+  - 配置管理
+  - 实验系统
+## 四、Onboarding
+  - 引导流程
+  - 进度追踪
+## 五、Events
+  - 事件定义
+  - 事件追踪
+## 六、数据流
+```
+
+### 4.8 notifications/architecture.md (P1)
+```
+# 通知模块架构
+## 一、模块概述
+## 二、代码结构
+## 三、通知类型
+  - 系统通知
+  - 订阅通知
+  - 活动通知
+## 四、推送机制
+## 五、存储设计
+## 六、数据流
+```
+
+### 4.9 search/architecture.md (P2)
+```
+# 搜索模块架构
+## 一、模块概述
+## 二、代码结构
+## 三、搜索实现
+  - 全文搜索
+  - 过滤排序
+## 四、索引策略
+## 五、性能优化
+```
+
+### 4.10 profile/architecture.md (P1)
+```
+# 个人资料模块架构
+## 一、模块概述
+## 二、代码结构
+  - 后端（profile, user_preferences）
+  - 前端（app/profile, stores/user）
+## 三、个人信息管理
+## 四、偏好设置
+## 五、数据流
 ```
 
 ---
@@ -449,6 +680,9 @@
 |------|------|
 | tech-stack.md | 01-project/ |
 | editor.md | 02-product/features/ |
+| templates.md | 02-product/features/ |
+| auth.md | 02-product/features/ |
+| credits.md | 02-product/features/ |
 | overview.md | 04-engineering/architecture/ |
 | backend.md | 04-engineering/architecture/ |
 | frontend.md | 04-engineering/architecture/ |
@@ -456,6 +690,7 @@
 | editor/architecture.md | 04-engineering/modules/ |
 | billing/architecture.md | 04-engineering/modules/ |
 | auth/architecture.md | 04-engineering/modules/ |
+| ai/architecture.md | 04-engineering/modules/ |
 | tier-benefits.md | 05-business/tier-system/ |
 | credits-flow.md | 05-business/credits-system/ |
 | getting-started/index.md | public/manual/ |
@@ -470,6 +705,17 @@
 | marketplace.md | 02-product/features/ |
 | ai-generation.md | 02-product/features/ |
 | subscription.md | 02-product/features/ |
+| profile.md | 02-product/features/ |
+| search.md | 02-product/features/ |
+| favorites.md | 02-product/features/ |
+| notifications.md | 02-product/features/ |
+| file-import.md | 02-product/features/ |
+| file-export.md | 02-product/features/ |
+| dashboard/architecture.md | 04-engineering/modules/ |
+| marketplace/architecture.md | 04-engineering/modules/ |
+| platform/architecture.md | 04-engineering/modules/ |
+| notifications/architecture.md | 04-engineering/modules/ |
+| profile/architecture.md | 04-engineering/modules/ |
 | colors.md | 03-design/tokens/ |
 | typography.md | 03-design/tokens/ |
 | buttons.md | 03-design/components/ |
@@ -479,6 +725,18 @@
 | feature-matrix.md | 11-reference/ |
 | error-codes.md | 11-reference/ |
 | general.md | public/faq/ |
+
+### P2 - 补充文档（按需创建）
+
+| 文档 | 位置 |
+|------|------|
+| onboarding.md | 02-product/features/ |
+| feature-flags.md | 02-product/features/ |
+| search/architecture.md | 04-engineering/modules/ |
+| about-us.md | 02-product/pages/user/ |
+| contact-us.md | 02-product/pages/user/ |
+| terms.md | 02-product/pages/user/ |
+| privacy.md | 02-product/pages/user/ |
 
 ---
 
