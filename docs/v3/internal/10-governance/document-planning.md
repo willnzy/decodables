@@ -737,12 +737,12 @@
 | onboarding.md | 02-product/features/ | ✅ 完成 |
 | feature-flags.md | 02-product/features/ | ✅ 完成 |
 | search/architecture.md | 04-engineering/modules/ | ✅ 完成 |
-| about-us.md | 02-product/pages/user/ | 🔜 待创建 |
-| contact-us.md | 02-product/pages/user/ | 🔜 待创建 |
-| terms.md | 02-product/pages/user/ | 🔜 待创建 |
-| privacy.md | 02-product/pages/user/ | 🔜 待创建 |
+| about-us.md | 02-product/pages/user/ | ✅ 完成 |
+| contact-us.md | 02-product/pages/user/ | ✅ 完成 |
+| terms.md | 02-product/pages/user/ | ✅ 完成 |
+| privacy.md | 02-product/pages/user/ | ✅ 完成 |
 
-**P2 完成率: 3/7 (43%)**
+**P2 完成率: 7/7 (100%)**
 
 ---
 
