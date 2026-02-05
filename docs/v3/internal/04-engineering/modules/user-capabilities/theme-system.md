@@ -2,9 +2,10 @@
 
 > Daily Doodle 与主题展示系统设计
 
-**验证状态**: 🟡 待验证  
-**同步范围**: [fullstack]  
-**代码来源**: `domains/themes/`, `api/user/themes.py`
+> **同步范围**: [fullstack]
+> **状态**: 🟡 待验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `domains/themes/`, `api/user/themes.py`
 
 ---
 

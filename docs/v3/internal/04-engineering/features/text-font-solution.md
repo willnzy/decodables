@@ -2,9 +2,10 @@
 
 > Text & Font Solution - 文字编辑、字体加载、艺术字效果
 
-**验证状态**: 🟢 已验证  
-**同步范围**: [frontend]  
-**代码来源**: `@core/components/editor/`, `@business/stores/editor/`
+> **同步范围**: [frontend]
+> **状态**: 🟢 已验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `@core/components/editor/`, `@business/stores/editor/`
 
 ---
 

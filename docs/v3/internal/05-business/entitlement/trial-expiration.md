@@ -2,8 +2,10 @@
 
 > Trial & Expiration - 试用期管理与订阅到期处理
 
-**验证状态**: 🟡 待验证  
-**同步范围**: [fullstack]
+> **同步范围**: [fullstack]
+> **状态**: 🟡 待验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `v1/shared/entitlement/`, `domains/subscriptions/`
 
 ---
 

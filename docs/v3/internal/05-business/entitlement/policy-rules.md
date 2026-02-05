@@ -2,8 +2,10 @@
 
 > 权益策略规则
 
-**验证状态**: 🟢 已验证  
-**同步范围**: [fullstack]
+> **同步范围**: [fullstack]
+> **状态**: 🟢 已验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `domains/*/permissions.py`, `v1/shared/entitlement/`
 
 ---
 

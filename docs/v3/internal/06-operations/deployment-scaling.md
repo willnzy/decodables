@@ -2,8 +2,10 @@
 
 > 系统部署流程、环境配置、扩展策略
 
-**验证状态**: 🟡 待验证  
-**同步范围**: [backend]
+> **同步范围**: [backend]
+> **状态**: 🟡 待验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `v2/06-operations/deployment-scaling.md`, Railway/Vercel 配置
 
 ---
 

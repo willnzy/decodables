@@ -2,9 +2,10 @@
 
 > 后端日志规范与审计要求
 
-**验证状态**: 🟢 已验证  
-**同步范围**: [backend]  
-**代码来源**: `core/logging.py`, `core/config.py`
+> **同步范围**: [backend]
+> **状态**: 🟢 已验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `core/logging.py`, `core/config.py`
 
 ---
 

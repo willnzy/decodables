@@ -2,8 +2,9 @@
 
 > Entitlement System - 用户权限、配额、功能控制
 
-**验证状态**: 🟢 已验证  
-**同步范围**: [fullstack]
+> **同步范围**: [fullstack]
+> **状态**: 🟢 已验证
+> **最后更新**: 2026-02-05
 
 ---
 
@@ -15,16 +16,28 @@
 
 ## 二、文档清单
 
-| 文档 | 状态 | 描述 |
+### 2.1 已实现 (🟢 Active)
+
+从代码提取的当前实现文档：
+
+| 文档 | 描述 |
+|------|------|
+| [系统设计](./system-design.md) | 权益系统整体架构 |
+| [权限矩阵](./permission-matrix.md) | Tier 权限对照表 |
+| [策略规则](./policy-rules.md) | 权限判断优先级和规则 |
+| [推荐奖励](./referral-rewards.md) | 推荐返利机制 |
+| [计费生命周期](./billing-lifecycle.md) | 订阅状态流转 |
+| [实现指南](./implementation-guide.md) | 开发实现参考 |
+
+### 2.2 规划中 (🟡 Draft)
+
+设计完成，代码待实现：
+
+| 文档 | 描述 | 来源 |
 |------|------|------|
-| [系统设计](./system-design.md) | 🟢 Active | 权益系统整体架构 |
-| [权限矩阵](./permission-matrix.md) | 🟢 Active | Tier 权限对照表 |
-| [策略规则](./policy-rules.md) | 🟢 Active | 权限判断优先级和规则 |
-| [促销规则](./promotions.md) | 🟡 Draft | 折扣码、限时优惠 |
-| [试用与到期](./trial-expiration.md) | 🟡 Draft | 试用期、订阅到期处理 |
-| [推荐奖励](./referral-rewards.md) | 🟢 Active | 推荐返利机制 |
-| [教育优惠](./education-discount.md) | 🟡 Draft | 教育用户优惠政策 |
-| [实现指南](./implementation-guide.md) | 🟢 Active | 开发实现参考 |
+| [促销规则](./promotions.md) | 折扣码、限时优惠 | v1 设计 |
+| [试用与到期](./trial-expiration.md) | 试用期、订阅到期处理 | v1 设计 |
+| [教育优惠](./education-discount.md) | 教育用户优惠政策 | v1 设计 |
 
 ---
 

@@ -2,9 +2,10 @@
 
 > 事件追踪、用户行为分析、业务指标统计
 
-**验证状态**: 🟢 已验证  
-**同步范围**: [fullstack]  
-**代码来源**: `domains/analytics/`, `api/v2/user/analytics.py`
+> **同步范围**: [fullstack]
+> **状态**: 🟢 已验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `domains/analytics/`, `api/v2/user/analytics.py`
 
 ---
 

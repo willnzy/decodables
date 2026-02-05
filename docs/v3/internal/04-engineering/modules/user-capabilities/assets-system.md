@@ -2,9 +2,10 @@
 
 > 用户资产上传、存储、管理的完整设计
 
-**验证状态**: 🟢 已验证  
-**同步范围**: [fullstack]  
-**代码来源**: `domains/assets/`, `infrastructure/repositories/asset_repository.py`
+> **同步范围**: [fullstack]
+> **状态**: 🟢 已验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `domains/assets/`, `infrastructure/repositories/asset_repository.py`
 
 ---
 

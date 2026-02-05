@@ -2,9 +2,10 @@
 
 > 用户支持、工单管理、反馈收集
 
-**验证状态**: 🟡 待验证  
-**同步范围**: [fullstack]  
-**代码来源**: `domains/support/`, `api/user/support.py`
+> **同步范围**: [fullstack]
+> **状态**: 🟡 待验证
+> **最后更新**: 2026-02-05
+> **数据来源**: `domains/support/`, `api/user/support.py`
 
 ---
 
