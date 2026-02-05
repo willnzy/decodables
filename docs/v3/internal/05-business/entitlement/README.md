@@ -27,7 +27,8 @@
 | [策略规则](./policy-rules.md) | 权限判断优先级和规则 |
 | [推荐奖励](./referral-rewards.md) | 推荐返利机制 |
 | [计费生命周期](./billing-lifecycle.md) | 订阅状态流转 |
-| [实现指南](./implementation-guide.md) | 开发实现参考 |
+
+> **技术实现**: 见 [权益系统实现指南](../../04-engineering/modules/entitlement/implementation-guide.md)
 
 ### 2.2 规划中 (🟡 Draft)
 
@@ -139,5 +140,6 @@ const { allowed, loading } = useFeatureAccess('ai_generation');
 ## 六、相关文档
 
 - [Billing 架构](../../04-engineering/modules/billing/architecture.md)
-- [Feature Flag 引擎](../../02-standards/feature-flag-engine.md)
-- [Tier 命名系统](../../03-business/tier-system.md)
+- [Feature Flag 实现](../../04-engineering/modules/platform/feature-flags.md)
+- [Tier 系统概述](../tier-system/overview.md)
+- [实现指南](../../04-engineering/modules/entitlement/implementation-guide.md)
