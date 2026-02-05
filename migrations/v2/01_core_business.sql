@@ -1983,7 +1983,8 @@ DECLARE
     v_seq TEXT;
     v_rand TEXT;
 BEGIN
-    v_now := NOW();
+    -- 使用 UTC 时间
+    v_now := (NOW() AT TIME ZONE 'UTC');
     
     -- 日期部分 (YYMMDD) - 6 位
     v_date := TO_CHAR(v_now, 'YYMMDD');
