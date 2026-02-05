@@ -23,6 +23,7 @@
 | [08-operations](internal/08-operations/) | 运维 | 部署监控 |
 | [09-compliance](internal/09-compliance/) | 合规 | 法务要求 |
 | [10-governance](internal/10-governance/) | 文档治理 | 模板规范 |
+| [11-reference](internal/11-reference/) | 参考资料 | 术语表、速查 |
 
 ### 📢 Public（外部内容）
 
