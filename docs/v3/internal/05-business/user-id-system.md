@@ -55,59 +55,57 @@
 ### 3.1 格式结构
 
 ```
-YYMMDD + HHMMSS + mmmm + UUUUUUU + RRR
+YYMMDDHHMMSS + SSSSSSSSSS + RRRR
 ```
 
 | 部分 | 位数 | 说明 | 示例 |
 |------|------|------|------|
-| 日期 | 6 | YYMMDD (UTC) | `260109` |
-| 时间 | 6 | HHMMSS (UTC) | `143052` |
-| 毫秒 | 4 | 0000-9999 | `7890` |
-| 用户序号 | 7 | 全局注册序号 | `0123456` |
-| 随机数 | 3 | 000-999 | `789` |
+| 时间戳 | 12 | YYMMDDHHMMSS (UTC) | `260109143052` |
+| 序列号 | 10 | PostgreSQL 序列号 | `0000001234` |
+| 随机数 | 4 | 0000-9999 | `5678` |
+
+**总长度**: 12 + 10 + 4 = **26 位**
 
 ### 3.2 示例解读
 
 ```
-26010914305278900123456789
-│    │     │   │      │
-│    │     │   │      └── 随机数: 789
-│    │     │   └── 用户序号: 0123456 (第 123,456 个用户)
-│    │     └── 毫秒: 7890
-│    └── 时间: 143052 (14:30:52)
-└── 日期: 260109 (2026年1月9日)
+26010914305200000012345678
+│           │         │
+│           │         └── 随机数: 5678 (4位)
+│           └── 序列号: 0000001234 (第 1234 个序列, 10位)
+└── 时间戳: 260109143052 (2026-01-09 14:30:52, 12位)
 ```
 
-### 3.3 生成逻辑
+### 3.3 生成逻辑 (PostgreSQL)
 
-```python
-def generate_user_code() -> str:
-    """
-    生成 26 位 user_code
+```sql
+-- 位于: migrations/v2/01_core_business.sql
+CREATE OR REPLACE FUNCTION generate_user_code()
+RETURNS TEXT AS $$
+DECLARE
+    new_user_code TEXT;
+    current_timestamp_str TEXT;
+    sequence_number BIGINT;
+BEGIN
+    -- 时间戳 (YYMMDDHHMMSS) - 12 位
+    current_timestamp_str := TO_CHAR(NOW(), 'YYMMDDHH24MISS');
     
-    1. 取 UTC 当前时间 (精确到 0.1ms)
-    2. 拼接日期/时间/毫秒
-    3. 读取当前用户总数 + 1，补零 7 位
-    4. 生成 3 位随机数
-    5. 组合为 26 位 user_code
-    6. 若冲突则重试
-    """
-    now = datetime.utcnow()
+    -- ✅ 使用序列（原子递增，无并发冲突）- 10 位
+    sequence_number := nextval('user_code_seq');
     
-    # 日期部分
-    date_part = now.strftime("%y%m%d")  # 260109
-    time_part = now.strftime("%H%M%S")  # 143052
-    ms_part = f"{int(now.microsecond / 100):04d}"  # 7890
+    -- 组合成 26 位用户码
+    -- 格式: [时间12位][序列10位][随机4位]
+    new_user_code := 
+        current_timestamp_str ||                           -- 12 位: 时间戳
+        LPAD(sequence_number::TEXT, 10, '0') ||           -- 10 位: 序列号
+        LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');      --  4 位: 随机数
     
-    # 用户序号
-    user_count = get_total_user_count() + 1
-    seq_part = f"{user_count:07d}"  # 0123456
-    
-    # 随机数
-    rand_part = f"{random.randint(0, 999):03d}"  # 789
-    
-    return date_part + time_part + ms_part + seq_part + rand_part
+    RETURN new_user_code;
+END;
+$$ LANGUAGE plpgsql;
 ```
+
+> 📌 **设计说明**: 使用 PostgreSQL 序列 (`user_code_seq`) 替代用户总数计数，避免并发冲突
 
 ---
 

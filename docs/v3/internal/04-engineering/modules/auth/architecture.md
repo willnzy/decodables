@@ -27,8 +27,8 @@
 | Access Token | JWT HS256, 15 分钟有效期 |
 | Refresh Token | Opaque UUID, SHA-256 哈希存储 |
 | 密码加密 | Argon2id |
-| OTP | 6 位数字, 5 分钟有效 |
-| 会话限制 | 最多 5 个活跃会话 |
+| OTP | 6 位数字, 10 分钟有效 |
+| 会话限制 | 最多 10 个活跃会话 |
 
 ---
 
@@ -181,7 +181,7 @@ class Session:
 │     - 失败? → 累计失败次数, 可能触发锁定                    │
 │       ↓                                                    │
 │  4. 创建会话                                               │
-│     - 超过 5 个? → 撤销最旧会话                            │
+│     - 超过 10 个? → 撤销最旧会话                           │
 │       ↓                                                    │
 │  5. 生成 Token                                             │
 │     - Access Token (JWT, 15min)                            │
@@ -240,12 +240,11 @@ class Session:
     "email": "user@example.com",
     "role": "user",               # user / admin
     "tier": "t2",                 # t1 / t2 / t3
-    "sid": "session_id (UUID)",   # Session ID
+    "type": "access",             # Token 类型
     "iss": "make-decodables",     # Issuer
-    "aud": "make-decodables",     # Audience
+    "aud": "make-decodables-api", # Audience
     "iat": 1738750000,            # Issued At
-    "exp": 1738750900,            # Expiration (15 min)
-    "jti": "unique_token_id"      # JWT ID
+    "exp": 1738750900             # Expiration (15 min)
 }
 ```
 
@@ -277,7 +276,7 @@ TokenService(
 | 措施 | 配置 |
 |------|------|
 | 最大失败次数 | 5 次 |
-| 锁定时间 | 15 分钟 |
+| 锁定时间 | 30 分钟 |
 | 密码强度 | 至少 8 字符 |
 
 ### 6.2 OTP 保护
@@ -285,7 +284,7 @@ TokenService(
 | 措施 | 配置 |
 |------|------|
 | OTP 长度 | 6 位数字 |
-| 有效期 | 5 分钟 |
+| 有效期 | 10 分钟 |
 | 冷却时间 | 60 秒 |
 | 最大验证次数 | 5 次 |
 
@@ -293,7 +292,7 @@ TokenService(
 
 | 措施 | 说明 |
 |------|------|
-| 最多 5 会话 | 超出自动撤销最旧会话 |
+| 最多 10 会话 | 超出自动撤销最旧会话 |
 | Token 轮换 | 每次刷新生成新 Refresh Token |
 | 重用检测 | 检测到重用立即撤销整个 Token Family |
 

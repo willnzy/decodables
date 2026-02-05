@@ -256,10 +256,13 @@ async def reset_monthly_credits(user_id: str, tier: str):
 | 事件 | 处理逻辑 |
 |------|----------|
 | `checkout.session.completed` | 订阅创建/积分充值 |
-| `invoice.paid` | 订阅续期，重置月度积分 |
+| `invoice.payment_succeeded` | 订阅续期，重置月度积分 |
 | `invoice.payment_failed` | 标记 past_due 状态 |
+| `invoice.payment_action_required` | 需要额外支付验证 |
 | `customer.subscription.updated` | 升降级处理 |
 | `customer.subscription.deleted` | 订阅取消，降级到 t1 |
+| `charge.refunded` | 退款处理 |
+| `customer.deleted` | 客户删除 |
 
 ### 6.3 Plan Type 映射
 
