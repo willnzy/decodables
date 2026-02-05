@@ -1,8 +1,9 @@
-# v2 → v3 迁移映射表
+# v1/v2 → v3 迁移映射表
 
 > **状态**: draft
 > **创建日期**: 2026-02-05
-> **用途**: 验证 v2 内容在 v3 中的覆盖完整性
+> **更新日期**: 2026-02-05
+> **用途**: 验证 v1 和 v2 内容在 v3 中的覆盖完整性
 
 ---
 
@@ -286,3 +287,242 @@
 2. **整合重复内容** - 将 📋 待整合的文档内容合并到目标文档
 3. **归档旧文档** - 将 🗄️ 标记的文档移入 archive/
 4. **验证完整性** - 逐个确认知识点已覆盖
+
+---
+
+# Part 2: v1 → v3 迁移映射
+
+> v1 文档在前后端仓库中不完全同步，需要分别处理
+
+---
+
+## 后端 v1 (decodables/docs/v1/)
+
+### v1/main/ → internal/04-engineering/
+
+| v1 文件 | v3 位置 | 状态 | 说明 |
+|---------|---------|------|------|
+| api-reference.md | internal/04-engineering/development/api-guide.md | ✅ 已规划 | |
+| architecture-proposal.md | internal/04-engineering/architecture/overview.md | ✅ 已规划 | |
+| backend-architecture.md | internal/04-engineering/architecture/backend.md | ✅ 已规划 | |
+| backend-business-logic.md | internal/05-business/ | 📋 待整合 | |
+| codebase-health-matrix.md | internal/10-governance/ | 📋 待整合 | |
+| database-guide.md | internal/04-engineering/development/database.md | ✅ 已规划 | |
+| deployment-scaling.md | internal/08-operations/deployment.md | ✅ 已规划 | |
+| knowledge-base.md | internal/01-project/glossary.md | 📋 待整合 | |
+| naming-conventions.md | internal/04-engineering/development/backend.md | ✅ 已规划 | |
+| testing-guide.md | internal/04-engineering/development/testing.md | ✅ 已规划 | |
+
+### v1/adr/ → internal/04-engineering/architecture/decisions/
+
+| v1 文件 | v3 位置 | 状态 |
+|---------|---------|------|
+| 0001-use-ddd-architecture.md | internal/04-engineering/architecture/decisions/ | ✅ 已规划 |
+| 0002-database-driven-config.md | internal/04-engineering/architecture/decisions/ | ✅ 已规划 |
+
+### v1/monitoring/ → internal/08-operations/
+
+| v1 文件 | v3 位置 | 状态 |
+|---------|---------|------|
+| grafana-setup-guide.md | internal/08-operations/monitoring.md | 📋 待整合 |
+
+### v1/tmp/ → archive/
+
+| v1 文件 | v3 位置 | 状态 | 说明 |
+|---------|---------|------|------|
+| 001-message-system-optimization.md | archive/ | 🗄️ 归档 | 临时优化文档 |
+| 003-sql-cross-audit.md | archive/ | 🗄️ 归档 | 审计文档 |
+| 20260130-payment-*.md | archive/ | 🗄️ 归档 | 支付审计 |
+| API-*.md | archive/ | 🗄️ 归档 | API 审计 |
+| auth-security-audit-*.md | archive/ | 🗄️ 归档 | 安全审计 |
+
+---
+
+## 前端 v1 (decodables-fe/docs/v1/)
+
+### v1/main/ → internal/ (前端专属)
+
+| v1 文件 | v3 位置 | 状态 | 说明 |
+|---------|---------|------|------|
+| canvas-architecture-design.md | internal/04-engineering/modules/editor/ | ✅ 已规划 | 🔵 前端专属 |
+| editor-media-properties-redesign.md | internal/04-engineering/modules/editor/ | ✅ 已规划 | 🔵 前端专属 |
+| file-import-support-design.md | internal/04-engineering/modules/editor/ | ✅ 已规划 | 🔵 前端专属 |
+| image-crop-solution-design.md | internal/04-engineering/modules/editor/ | ✅ 已规划 | 🔵 前端专属 |
+| text-font-solution-design.md | internal/04-engineering/modules/editor/ | ✅ 已规划 | 🔵 前端专属 |
+| make-decodables-design-system.md | internal/03-design/ | ✅ 已规划 | 🔵 前端专属 |
+| responsive-design-guide.md | internal/03-design/patterns.md | ✅ 已规划 | 🔵 前端专属 |
+| frontend-development-guide.md | internal/04-engineering/development/frontend.md | ✅ 已规划 | 🔵 前端专属 |
+| frontend-architecture-audit-v1.md | archive/ | 🗄️ 归档 | 审计报告 |
+| integration-testing-guide.md | internal/04-engineering/development/testing.md | ✅ 已规划 | |
+| ui-navigation-design.md | internal/03-design/patterns.md | 📋 待整合 | |
+| top-bar-height-management.md | internal/03-design/patterns.md | 📋 待整合 | |
+| Mobile-Profile-Page-Design.md | internal/02-product/pages/user/profile.md | ✅ 已规划 | |
+| v3-spec-overview.md | archive/ | 🗄️ 归档 | 版本规划 |
+
+### v1/operation/ → archive/ (前端专属)
+
+| v1 文件 | v3 位置 | 状态 | 说明 |
+|---------|---------|------|------|
+| refactor/CODE-REFACTOR-PLAN.md | archive/ | 🗄️ 归档 | 重构计划 |
+| tmp/*.md | archive/ | 🗄️ 归档 | 临时操作文档 |
+
+### v1/archive/ → archive/
+
+| v1 文件 | v3 位置 | 状态 |
+|---------|---------|------|
+| editor-audit-report.md | archive/ | 🗄️ 归档 |
+
+### v1/tmp/ → archive/ (前端专属)
+
+| v1 文件类型 | v3 位置 | 状态 | 说明 |
+|-------------|---------|------|------|
+| 20260130-*.md | archive/ | 🗄️ 归档 | Dashboard 审计 |
+| 20260131-*.md | archive/ | 🗄️ 归档 | 各页面审计 |
+| audit-sessions/*.md | archive/ | 🗄️ 归档 | 系统审计会话 |
+| workspace-*.md | archive/ | 🗄️ 归档 | 工作区设计 |
+
+---
+
+## 前后端共享 v1/shared/ → internal/05-business/ + others
+
+> 两边的 shared/ 目录内容应相同
+
+| v1 文件 | v3 位置 | 状态 | 说明 |
+|---------|---------|------|------|
+| user-id-system.md | internal/05-business/user-system.md | ✅ 已规划 | |
+| tier-naming-system.md | internal/05-business/tier-system.md | ✅ 已规划 | |
+| tier-permissions.md | internal/05-business/entitlement/ | 📋 待整合 | |
+| pricing-system-design.md | internal/05-business/pricing.md | ✅ 已规划 | |
+| canvas-data-schema.md | internal/04-engineering/data/schema.md | ✅ 已规划 | |
+| self-hosted-auth-design.md | internal/04-engineering/modules/auth/ | ✅ 已规划 | |
+| feature-flag-design.md | internal/04-engineering/modules/ | ✅ 已规划 | |
+| feature-flag-engine.md | internal/04-engineering/modules/ | ✅ 已规划 | |
+| onboarding-design.md | internal/06-growth/retention/onboarding.md | ✅ 已规划 | |
+| theme-system-design.md | internal/02-product/features/ | 📋 待整合 | |
+| static-pages-cms-design.md | internal/02-product/features/admin.md | 📋 待整合 | |
+| articles-system-design.md | internal/02-product/features/admin.md | 📋 待整合 | |
+| analytics-system-design.md | internal/07-analytics/ | 📋 待整合 | |
+| asset-category-design.md | internal/02-product/features/ | 📋 待整合 | |
+| message-logging-standard.md | internal/04-engineering/development/backend.md | 📋 待整合 | |
+| entitlement-*.md | internal/05-business/entitlement/ | ✅ 已规划 | |
+| admin-api-review.md | archive/ | 🗄️ 归档 | |
+| user-api-review.md | archive/ | 🗄️ 归档 | |
+| project-implementation-plan.md | archive/ | 🗄️ 归档 | |
+| system-refactoring-proposal-v2.md | archive/ | 🗄️ 归档 | |
+| v3-refactoring-completion-report.md | archive/ | 🗄️ 归档 | |
+
+### v1/shared/entitlement/ → internal/05-business/entitlement/
+
+| v1 文件 | v3 位置 | 状态 |
+|---------|---------|------|
+| 01-permission-matrix.md | internal/05-business/entitlement/permission-matrix.md | ✅ 已规划 |
+| 02-tier-config.md | internal/05-business/tier-system.md | 📋 待整合 |
+| 03-system-design.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 04-feature-flag-engine.md | internal/04-engineering/modules/ | 📋 待整合 |
+| 05-ui-spec.md | internal/02-product/features/billing.md | 📋 待整合 |
+| 06-priority-rules.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 07-tier-inheritance.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 08-user-groups.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 09-config-versioning.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 10-workspace-override.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 11-trial-expiration.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 12-tier-downgrade.md | internal/05-business/entitlement/billing-lifecycle.md | 📋 待整合 |
+| 13-subscription-pause.md | internal/05-business/entitlement/billing-lifecycle.md | 📋 待整合 |
+| 14-billing-cycle-switch.md | internal/05-business/entitlement/billing-lifecycle.md | 📋 待整合 |
+| 15-credits-lifecycle.md | internal/05-business/credits-system.md | ✅ 已规划 |
+| 16-renewal-reminders.md | internal/05-business/entitlement/billing-lifecycle.md | 📋 待整合 |
+| 17-invoice-management.md | internal/05-business/entitlement/billing-lifecycle.md | 📋 待整合 |
+| 18-refund-processing.md | internal/05-business/entitlement/billing-lifecycle.md | 📋 待整合 |
+| 19-promotions.md | internal/05-business/entitlement/promotions.md | ✅ 已规划 |
+| 20-referral-rewards.md | internal/06-growth/retention/referral.md | ✅ 已规划 |
+| 21-education-discount.md | internal/05-business/entitlement/promotions.md | 📋 待整合 |
+| 22-free-quota.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 23-feature-sunset.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 24-conflict-resolution.md | internal/05-business/entitlement/ | 📋 待整合 |
+| 25-future-scenarios.md | archive/ | 🗄️ 归档 |
+| 26-audit-checklist.md | archive/ | 🗄️ 归档 |
+| 27-audit-report-*.md | archive/ | 🗄️ 归档 |
+| 28-audit-supplement-*.md | archive/ | 🗄️ 归档 |
+
+### v1/shared/entitlement/implementation/ → internal/04-engineering/modules/billing/
+
+| v1 文件 | v3 位置 | 状态 |
+|---------|---------|------|
+| 01-database-schema.md | internal/04-engineering/data/schema.md | 📋 待整合 |
+| 02-backend-services.md | internal/04-engineering/modules/billing/ | 📋 待整合 |
+| 03-backend-repositories.md | internal/04-engineering/modules/billing/ | 📋 待整合 |
+| 04-backend-apis.md | internal/04-engineering/api/ | 📋 待整合 |
+| 05-frontend-stores.md | internal/04-engineering/modules/billing/ | 📋 待整合 |
+| 06-frontend-components.md | internal/04-engineering/modules/billing/ | 📋 待整合 |
+| 07-migration-scripts.md | archive/ | 🗄️ 归档 |
+
+---
+
+## v1 统计汇总
+
+| 来源 | 类别 | 数量 |
+|------|------|------|
+| **后端 v1** | | |
+| | main/ | 10 |
+| | adr/ | 3 |
+| | monitoring/ | 1 |
+| | tmp/ | ~10 |
+| **前端 v1** | | |
+| | main/ | 14 |
+| | operation/ | ~15 |
+| | archive/ | 1 |
+| | tmp/ | ~40 |
+| **共享 v1** | | |
+| | shared/ | ~25 |
+| | shared/entitlement/ | ~30 |
+| | shared/entitlement/implementation/ | 8 |
+| **总计** | | **~160** |
+
+---
+
+## v1 特殊处理说明
+
+### 后端专属文档 (🔴)
+
+这些文档只在后端 v1 存在，迁移到 v3 时放在后端仓库：
+
+- api-reference.md
+- backend-architecture.md
+- backend-business-logic.md
+- database-guide.md
+- deployment-scaling.md
+- grafana-setup-guide.md
+
+### 前端专属文档 (🔵)
+
+这些文档只在前端 v1 存在，迁移到 v3 时放在前端仓库：
+
+- canvas-architecture-design.md
+- editor-media-properties-redesign.md
+- file-import-support-design.md
+- image-crop-solution-design.md
+- text-font-solution-design.md
+- make-decodables-design-system.md
+- responsive-design-guide.md
+- frontend-development-guide.md
+- ui-navigation-design.md
+- operation/refactor/*
+- operation/tmp/*
+
+### 共享文档处理
+
+shared/ 目录的文档在 v3 中：
+- 业务规则 → `internal/05-business/` (两边都有)
+- 技术实现 → 按前后端分别放置
+
+---
+
+## 总体统计
+
+| 来源 | 文档数 | 已规划 | 待整合 | 归档 |
+|------|--------|--------|--------|------|
+| v2 | ~125 | ~60 | ~50 | ~15 |
+| v1 | ~160 | ~50 | ~60 | ~50 |
+| **总计** | **~285** | **~110** | **~110** | **~65** |
+
+> 注：部分 v1 和 v2 文档内容重复，实际需要迁移的知识点少于文档总数
