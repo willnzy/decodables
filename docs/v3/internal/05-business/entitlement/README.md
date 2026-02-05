@@ -1,147 +1,64 @@
-# 权益系统
-
-> Entitlement System - 用户权限、配额、功能控制
+# 权益系统 (Entitlement)
 
 > **版本**: 1.0.0
 > **创建日期**: 2026-02-05
-> **状态**: 🟢 已验证
+> **状态**: 🟡 待补充
 > **同步范围**: [fullstack]
-> **数据来源**: `domains/billing/`, `domains/platform/`
 
 ---
 
-## 一、概述
+## 概述
 
-权益系统管理用户对功能的访问权限、配额限制和特殊优惠，是平台商业模式的核心组件。
+权益系统管理用户可使用的功能和资源配额。
 
 ---
 
-## 二、文档清单
+## 核心概念
 
-### 2.1 已实现 (🟢 Active)
-
-从代码提取的当前实现文档：
-
-| 文档 | 描述 |
+| 概念 | 说明 |
 |------|------|
-| [系统设计](./system-design.md) | 权益系统整体架构 |
-| [权限矩阵](./permission-matrix.md) | Tier 权限对照表 |
-| [策略规则](./policy-rules.md) | 权限判断优先级和规则 |
-| [推荐奖励](./referral-rewards.md) | 推荐返利机制 |
-| [计费生命周期](./billing-lifecycle.md) | 订阅状态流转 |
-
-> **技术实现**: 见 [权益系统实现指南](../../04-engineering/modules/entitlement/implementation-guide.md)
-
-### 2.2 规划中 (🟡 Draft)
-
-设计完成，代码待实现：
-
-| 文档 | 描述 | 来源 |
-|------|------|------|
-| [促销规则](./promotions.md) | 折扣码、限时优惠 | v1 设计 |
-| [试用与到期](./trial-expiration.md) | 试用期、订阅到期处理 | v1 设计 |
-| [教育优惠](./education-discount.md) | 教育用户优惠政策 | v1 设计 |
+| **Tier** | 用户层级 (t1/t2/t3) |
+| **Entitlement** | 具体权益项 (功能/配额) |
+| **Quota** | 资源使用限制 |
+| **Override** | 特殊权益覆盖 |
 
 ---
 
-## 三、核心概念
+## 文档索引
 
-### 3.1 权限层级
+### 核心规则
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    权限判断优先级                                │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  1. Kill Switch (全局禁用)                                      │
-│     │  ↓ 最高优先级                                             │
-│                                                                 │
-│  2. User Override (用户级覆盖)                                  │
-│     │  ↓ 管理员设置                                             │
-│                                                                 │
-│  3. Tier Permission (层级权限)                                  │
-│     │  ↓ t1/t2/t3 基础权限                                      │
-│                                                                 │
-│  4. Feature Flag (功能标记)                                     │
-│     │  ↓ A/B 测试、灰度发布                                     │
-│                                                                 │
-│  5. Default Value (默认值)                                      │
-│        ↓ 兜底策略                                               │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+| 文档 | 说明 |
+|------|------|
+| [权益配置](./config.md) | 配置存储和获取 |
+| [层级继承](./tier-inheritance.md) | 高层级继承低层级权益 |
+| [冲突解决](./conflict-resolution.md) | 多权益来源时的处理 |
 
-### 3.2 Tier 体系
+### 配额管理
 
-| Tier | 代码 | 显示名 | 价格 |
-|------|------|--------|------|
-| t1 | `t1` | Free Plan | $0 |
-| t2 | `t2` | Starter Plan | $6.9/月 |
-| t3 | `t3` | Pro Plan | $9.9/月 |
+| 文档 | 说明 |
+|------|------|
+| [免费配额](./free-quota.md) | t1 用户限制和超额处理 |
+| [试用过期](./trial-expiration.md) | 试用到期的处理 |
 
-### 3.3 配额类型
+### 计费相关
 
-| 类型 | 描述 | 限制方式 |
-|------|------|----------|
-| 积分 | AI 生成消耗 | 月度 + 永久 |
-| 存储 | 文件存储空间 | 按 Tier |
-| 项目 | 最大项目数 | 按 Tier |
-| 速率 | API 调用频率 | 分钟/天 |
+| 文档 | 说明 |
+|------|------|
+| [退款处理](./refund-processing.md) | 退款后的权益回收 |
+| [发票管理](./invoice-management.md) | 发票生成和下载 |
+| [续订提醒](./renewal-reminders.md) | 到期前的通知 |
+
+### 变更管理
+
+| 文档 | 说明 |
+|------|------|
+| [功能下线](./feature-sunset.md) | 功能移除/降级策略 |
 
 ---
 
-## 四、实现状态
+## 相关文档
 
-| 功能 | 状态 | 说明 |
-|------|------|------|
-| Tier 权限 | 🟢 已实现 | t1/t2/t3 基础权限 |
-| Feature Flag | 🟢 已实现 | 布尔/百分比/分群 |
-| Kill Switch | 🟢 已实现 | 紧急禁用开关 |
-| User Override | 🟢 已实现 | 管理员覆盖 |
-| 积分配额 | 🟢 已实现 | 双桶模型 |
-| 存储配额 | 🟡 部分实现 | 按 Tier 限制 |
-| 速率限制 | 🟢 已实现 | Redis 计数 |
-| 促销系统 | 🟡 规划中 | Stripe 集成 |
-| 教育优惠 | 🟡 规划中 | 验证流程 |
-
----
-
-## 五、快速使用
-
-### 5.1 后端检查权限
-
-```python
-# 依赖注入方式
-@router.post("/generate")
-async def generate(
-    _: FeatureAccess = Depends(require_feature("ai_generation")),
-    user: User = Depends(get_current_user)
-):
-    ...
-
-# 编程方式
-access = await entitlement_checker.check_feature(user, "export_pdf")
-if not access.allowed:
-    raise FeatureNotAllowedError(access.feature)
-```
-
-### 5.2 前端检查权限
-
-```typescript
-// Hook 方式
-const { allowed, loading } = useFeatureAccess('ai_generation');
-
-// 组件方式
-<FeatureGate feature="custom_fonts" fallback={<UpgradePrompt />}>
-  <CustomFontPicker />
-</FeatureGate>
-```
-
----
-
-## 六、相关文档
-
-- [Billing 架构](../../04-engineering/modules/billing/architecture.md)
-- [Feature Flag 实现](../../04-engineering/modules/platform/feature-flags.md)
-- [Tier 系统概述](../tier-system/overview.md)
-- [实现指南](../../04-engineering/modules/entitlement/implementation-guide.md)
+- [Tier 系统](../tier-system.md)
+- [积分系统](../credits-system.md)
+- [计费模块](../../04-engineering/modules/billing/)
