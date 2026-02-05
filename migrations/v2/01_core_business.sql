@@ -1976,21 +1976,33 @@ CREATE OR REPLACE FUNCTION generate_user_code()
 RETURNS TEXT AS $$
 DECLARE
     new_user_code TEXT;
-    current_timestamp_str TEXT;
-    sequence_number BIGINT;
+    v_now TIMESTAMP;
+    v_date TEXT;
+    v_time TEXT;
+    v_ms TEXT;
+    v_seq TEXT;
+    v_rand TEXT;
 BEGIN
-    -- 时间戳 (YYMMDDHHMMSS) - 12 位
-    current_timestamp_str := TO_CHAR(NOW(), 'YYMMDDHH24MISS');
+    v_now := NOW();
     
-    -- ✅ 使用序列（原子递增，无并发冲突）- 10 位
-    sequence_number := nextval('user_code_seq');
+    -- 日期部分 (YYMMDD) - 6 位
+    v_date := TO_CHAR(v_now, 'YYMMDD');
+    
+    -- 时间部分 (HHMMSS) - 6 位
+    v_time := TO_CHAR(v_now, 'HH24MISS');
+    
+    -- 毫秒部分 (精确到 0.1ms) - 4 位
+    v_ms := LPAD(FLOOR(EXTRACT(MILLISECONDS FROM v_now))::TEXT, 4, '0');
+    
+    -- 序号部分（原子递增）- 7 位
+    v_seq := LPAD((nextval('user_code_seq') % 10000000)::TEXT, 7, '0');
+    
+    -- 随机部分 - 3 位
+    v_rand := LPAD(FLOOR(RANDOM() * 1000)::TEXT, 3, '0');
     
     -- 组合成 26 位用户码
-    -- 格式: [时间12位][序列10位][随机4位]
-    new_user_code := 
-        current_timestamp_str ||                           -- 12 位: 时间戳
-        LPAD(sequence_number::TEXT, 10, '0') ||           -- 10 位: 序列号
-        LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');      --  4 位: 随机数
+    -- 格式: YYMMDD(6) + HHMMSS(6) + mmmm(4) + 序号(7) + 随机(3)
+    new_user_code := v_date || v_time || v_ms || v_seq || v_rand;
     
     RETURN new_user_code;
 END;
@@ -1998,8 +2010,9 @@ $$ LANGUAGE plpgsql
 SET search_path = 'public';
 
 COMMENT ON FUNCTION generate_user_code() IS 
-'生成 26 位唯一用户码（HOTFIX: 使用序列避免并发冲突）
-格式: YYMMDDHHMMSS(12位) + 序列号(10位) + 随机数(4位)';
+'生成 26 位唯一用户码
+格式: YYMMDD(6位) + HHMMSS(6位) + mmmm(4位毫秒) + 序号(7位) + 随机(3位)
+示例: 26010914305278900123456789';
 
 
 -- ----------------------------------------------------------------------------

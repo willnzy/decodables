@@ -55,25 +55,29 @@
 ### 3.1 格式结构
 
 ```
-YYMMDDHHMMSS + SSSSSSSSSS + RRRR
+YYMMDD + HHMMSS + mmmm + UUUUUUU + RRR
 ```
 
 | 部分 | 位数 | 说明 | 示例 |
 |------|------|------|------|
-| 时间戳 | 12 | YYMMDDHHMMSS (UTC) | `260109143052` |
-| 序列号 | 10 | PostgreSQL 序列号 | `0000001234` |
-| 随机数 | 4 | 0000-9999 | `5678` |
+| 日期 | 6 | YYMMDD (UTC) | `260109` |
+| 时间 | 6 | HHMMSS (UTC) | `143052` |
+| 毫秒 | 4 | 0000-9999 | `7890` |
+| 用户序号 | 7 | 全局注册序号 | `0123456` |
+| 随机数 | 3 | 000-999 | `789` |
 
-**总长度**: 12 + 10 + 4 = **26 位**
+**总长度**: 6 + 6 + 4 + 7 + 3 = **26 位**
 
 ### 3.2 示例解读
 
 ```
-26010914305200000012345678
-│           │         │
-│           │         └── 随机数: 5678 (4位)
-│           └── 序列号: 0000001234 (第 1234 个序列, 10位)
-└── 时间戳: 260109143052 (2026-01-09 14:30:52, 12位)
+26010914305278900123456789
+│    │     │   │      │
+│    │     │   │      └── 随机数: 789
+│    │     │   └── 用户序号: 0123456 (第 123,456 个用户)
+│    │     └── 毫秒: 7890
+│    └── 时间: 143052 (14:30:52)
+└── 日期: 260109 (2026年1月9日)
 ```
 
 ### 3.3 生成逻辑 (PostgreSQL)
@@ -83,29 +87,37 @@ YYMMDDHHMMSS + SSSSSSSSSS + RRRR
 CREATE OR REPLACE FUNCTION generate_user_code()
 RETURNS TEXT AS $$
 DECLARE
-    new_user_code TEXT;
-    current_timestamp_str TEXT;
-    sequence_number BIGINT;
+    v_now TIMESTAMP;
+    v_date TEXT;
+    v_time TEXT;
+    v_ms TEXT;
+    v_seq TEXT;
+    v_rand TEXT;
 BEGIN
-    -- 时间戳 (YYMMDDHHMMSS) - 12 位
-    current_timestamp_str := TO_CHAR(NOW(), 'YYMMDDHH24MISS');
+    v_now := NOW();
     
-    -- ✅ 使用序列（原子递增，无并发冲突）- 10 位
-    sequence_number := nextval('user_code_seq');
+    -- 日期部分 (YYMMDD) - 6 位
+    v_date := TO_CHAR(v_now, 'YYMMDD');
     
-    -- 组合成 26 位用户码
-    -- 格式: [时间12位][序列10位][随机4位]
-    new_user_code := 
-        current_timestamp_str ||                           -- 12 位: 时间戳
-        LPAD(sequence_number::TEXT, 10, '0') ||           -- 10 位: 序列号
-        LPAD(FLOOR(RANDOM() * 10000)::TEXT, 4, '0');      --  4 位: 随机数
+    -- 时间部分 (HHMMSS) - 6 位
+    v_time := TO_CHAR(v_now, 'HH24MISS');
     
-    RETURN new_user_code;
+    -- 毫秒部分 (精确到 0.1ms) - 4 位
+    v_ms := LPAD(FLOOR(EXTRACT(MILLISECONDS FROM v_now))::TEXT, 4, '0');
+    
+    -- 序号部分（原子递增）- 7 位
+    v_seq := LPAD((nextval('user_code_seq') % 10000000)::TEXT, 7, '0');
+    
+    -- 随机部分 - 3 位
+    v_rand := LPAD(FLOOR(RANDOM() * 1000)::TEXT, 3, '0');
+    
+    -- 组合: YYMMDD(6) + HHMMSS(6) + mmmm(4) + 序号(7) + 随机(3) = 26位
+    RETURN v_date || v_time || v_ms || v_seq || v_rand;
 END;
 $$ LANGUAGE plpgsql;
 ```
 
-> 📌 **设计说明**: 使用 PostgreSQL 序列 (`user_code_seq`) 替代用户总数计数，避免并发冲突
+> 📌 **设计说明**: 使用 PostgreSQL 序列 (`user_code_seq`) 保证原子递增，避免并发冲突
 
 ---
 
