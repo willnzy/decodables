@@ -1674,14 +1674,7 @@ COMMENT ON TABLE workspace_feature_override_logs IS 'Workspace 权限覆盖审�
 -- Entitlement RLS 策略
 -- ============================================================================
 
--- credit_pools RLS
-ALTER TABLE credit_pools ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY credit_pools_user_select ON credit_pools
-    FOR SELECT USING (user_id = auth.uid());
-
-CREATE POLICY credit_pools_service_all ON credit_pools
-    FOR ALL TO service_role USING (true) WITH CHECK (true);
+-- [DELETED] credit_pools RLS — 表已删除，对应 RLS 一并移除 (2026-02-08)
 
 -- user_feature_overrides RLS
 ALTER TABLE user_feature_overrides ENABLE ROW LEVEL SECURITY;
