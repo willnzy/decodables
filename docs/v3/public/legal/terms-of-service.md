@@ -75,4 +75,4 @@ Make Decodables 提供在线内容创作工具服务。
 
 ## 10. 联系我们
 
-如有疑问，请联系：legal@makedecodables.com
+如有疑问，请联系：legal@foliaz.com

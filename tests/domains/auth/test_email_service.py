@@ -25,8 +25,8 @@ def email_service() -> EmailService:
     """EmailService with test configuration."""
     return EmailService(
         resend_api_key="re_test_key",
-        from_email="noreply@makedecodables.com",
-        frontend_url="https://makedecodables.com",
+        from_email="noreply@foliaz.com",
+        frontend_url="https://foliaz.com",
         app_name="Make Decodables",
     )
 

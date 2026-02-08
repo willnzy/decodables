@@ -59,7 +59,7 @@
 发现违规内容可以：
 
 - 点击「举报」按钮
-- 发送邮件至 report@makedecodables.com
+- 发送邮件至 report@foliaz.com
 
 ---
 
@@ -77,11 +77,11 @@
 
 如果认为处理不当，可以：
 
-- 发送申诉邮件至 appeal@makedecodables.com
+- 发送申诉邮件至 appeal@foliaz.com
 - 提供相关证据
 
 ---
 
 ## 8. 联系我们
 
-内容相关问题：content@makedecodables.com
+内容相关问题：content@foliaz.com

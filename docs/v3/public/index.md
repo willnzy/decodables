@@ -26,7 +26,7 @@ Make Decodables 是一款专为教育工作者设计的 Mini Book 创作工具�
 ### ❓ 帮助与支持
 
 - [常见问题](./faq/general.md) - 常见问题解答
-- 联系客服: support@makedecodables.com
+- 联系客服: info@foliaz.com
 
 ---
 
@@ -54,7 +54,7 @@ Make Decodables 是一款专为教育工作者设计的 Mini Book 创作工具�
 
 ## 联系我们
 
-- 📧 邮箱: support@makedecodables.com
+- 📧 邮箱: info@foliaz.com
 - 💬 反馈: 应用内 "Feedback" 按钮
 
 ---

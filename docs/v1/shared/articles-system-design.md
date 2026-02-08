@@ -700,7 +700,7 @@ export async function generateMetadata({ params }) {
 export default async function sitemap() {
   const articles = await fetchAllArticles();
   return articles.map(article => ({
-    url: `https://makedecodables.com/${article.category}/${article.slug}`,
+    url: `https://foliaz.com/${article.category}/${article.slug}`,
     lastModified: article.updated_at,
   }));
 }

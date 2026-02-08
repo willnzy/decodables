@@ -107,7 +107,7 @@ PAGE_{PAGE_NAME}_{SECTION}_{FIELD}
 | `GLOBAL_COMPANY_EMAIL` | "info@foliaz.com" | 公司邮箱 |
 | `GLOBAL_COMPANY_WHATSAPP` | "+1 (725) 290 0525" | WhatsApp |
 | `GLOBAL_COMPANY_ADDRESS` | "..." | 公司地址 |
-| `GLOBAL_SUPPORT_EMAIL` | "support@makedecodables.com" | 客服邮箱 |
+| `GLOBAL_SUPPORT_EMAIL` | "info@foliaz.com" | 客服邮箱 |
 | `GLOBAL_LAST_UPDATED_PRIVACY` | "January 3, 2025" | 隐私政策更新日期 |
 | `GLOBAL_LAST_UPDATED_TERMS` | "January 3, 2025" | 服务条款更新日期 |
 | `GLOBAL_LAST_UPDATED_BILLING` | "December 30, 2024" | 计费政策更新日期 |
@@ -613,7 +613,7 @@ INSERT INTO system_configs (key, value, category, description, is_public) VALUES
 ('GLOBAL_COMPANY_NAME', '"Make Decodables"', 'global', 'Company name', true),
 ('GLOBAL_COMPANY_EMAIL', '"info@foliaz.com"', 'global', 'Contact email', true),
 ('GLOBAL_COMPANY_WHATSAPP', '"+1 (725) 290 0525"', 'global', 'WhatsApp number', true),
-('GLOBAL_SUPPORT_EMAIL', '"support@makedecodables.com"', 'global', 'Support email', true),
+('GLOBAL_SUPPORT_EMAIL', '"info@foliaz.com"', 'global', 'Support email', true),
 ('GLOBAL_COMPANY_ADDRESS', '"..."', 'global', 'Company address', true),
 ('GLOBAL_LAST_UPDATED_PRIVACY', '"January 3, 2025"', 'global', 'Privacy policy last updated', true),
 ('GLOBAL_LAST_UPDATED_TERMS', '"January 3, 2025"', 'global', 'Terms of service last updated', true),

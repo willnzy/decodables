@@ -109,7 +109,7 @@ questions_count: 5
 
 **操作步骤**：
 1. 确认在 7 天退款期内
-2. 发送邮件至 support@makedecodables.com
+2. 发送邮件至 info@foliaz.com
 3. 说明退款原因
 4. 等待 3-5 个工作日处理
 

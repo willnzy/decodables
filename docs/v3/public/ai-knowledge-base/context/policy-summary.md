@@ -42,5 +42,5 @@
 
 ## 客服渠道
 
-- 邮箱：support@makedecodables.com
+- 邮箱：info@foliaz.com
 - 工作时间：周一至周五 9:00-18:00 (UTC+8)

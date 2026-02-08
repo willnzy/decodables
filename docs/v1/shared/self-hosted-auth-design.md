@@ -43,8 +43,8 @@ Refresh Token: Next.js Route 设为 httpOnly cookie (前端域)
 1. **多环境兼容**：我们的前端域名需要支持 4 种环境：
    - `localhost:3000`（本地开发）
    - `*.vercel.app`（Vercel Preview，每次部署域名随机）
-   - `staging.makedecodables.com`（Staging）
-   - `app.makedecodables.com`（Production）
+   - `staging.foliaz.com`（Staging）
+   - `app.foliaz.com`（Production）
 
    方案 A（同域 Cookie）需要前后端共享父域，无法兼容 localhost 和 Vercel Preview 的随机域名。
    方案 B 的 cookie 始终设在前端自己的域上，天然兼容所有环境。
@@ -1037,8 +1037,8 @@ OTP 清理:
 
 ```
 域名配置（Phase 1 开始前必须完成）：
-- makedecodables.com 已配置 Resend 的 SPF 记录
-- makedecodables.com 已配置 Resend 的 DKIM 记录
+- foliaz.com 已配置 Resend 的 SPF 记录
+- foliaz.com 已配置 Resend 的 DKIM 记录
 - 建议配置 DMARC 策略（v=DMARC1; p=none; 开始观察模式）
 - 在 Resend Dashboard 验证域名所有权
 
@@ -1052,8 +1052,8 @@ OTP 清理:
 ### 5.8 OTP 邮件模板设计
 
 ```
-发件人: Make Decodables <noreply@makedecodables.com>
-（使用 RESEND_API_KEY + 已验证的 makedecodables.com 域名）
+发件人: Make Decodables <noreply@foliaz.com>
+（使用 RESEND_API_KEY + 已验证的 foliaz.com 域名）
 
 4 种邮件模板（根据 otp_purpose 区分）:
 

@@ -23,7 +23,7 @@
 
 | 环境 | URL |
 |------|-----|
-| 生产 | `https://api.makedecodables.com` |
+| 生产 | `https://api.foliaz.com` |
 | 开发 | `http://localhost:8000` |
 
 ---

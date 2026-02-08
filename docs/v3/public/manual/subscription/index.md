@@ -135,7 +135,7 @@ A: 请检查支付信息或更换支付方式。连续失败 3 次后订阅暂�
 
 如有订阅相关问题，请联系：
 
-- 邮箱: support@makedecodables.com
+- 邮箱: info@foliaz.com
 - 响应时间: 1-2 个工作日
 
 ---

@@ -8,7 +8,7 @@
 
 ### 如何注册账号？
 
-1. 访问 [makedecodables.com](https://makedecodables.com)
+1. 访问 [foliaz.com](https://foliaz.com)
 2. 点击 "Sign Up"
 3. 输入邮箱，接收验证码
 4. 设置密码完成注册
@@ -172,13 +172,13 @@
 
 ### 如何联系客服？
 
-- 📧 邮件: support@makedecodables.com
+- 📧 邮件: info@foliaz.com
 - 💬 在线聊天: 页面右下角
-- 📚 帮助中心: [help.makedecodables.com](https://help.makedecodables.com)
+- 📚 帮助中心: [help.foliaz.com](https://help.foliaz.com)
 
 ### 如何反馈建议？
 
-欢迎发送邮件至 feedback@makedecodables.com，我们重视每一条建议！
+欢迎发送邮件至 feedback@foliaz.com，我们重视每一条建议！
 
 ---
 

@@ -49,7 +49,7 @@ class EmailService:
 
         Args:
             resend_api_key: Resend API key.
-            from_email: Sender email address (e.g., noreply@makedecodables.com).
+            from_email: Sender email address (e.g., noreply@foliaz.com).
             frontend_url: Frontend base URL (used in email templates).
             app_name: Application name for email templates.
         """

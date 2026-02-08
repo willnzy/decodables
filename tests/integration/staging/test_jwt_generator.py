@@ -26,25 +26,25 @@ TEST_JWT_SECRET = os.getenv("AUTH_JWT_SECRET", "test_jwt_secret_for_integration_
 TEST_USERS = {
     "free": {
         "user_id": "00000000-0000-0000-0000-000000000001",
-        "email": "test-free@makedecodables.com",
+        "email": "test-free@foliaz.com",
         "tier": "t1",
         "role": "user",
     },
     "starter": {
         "user_id": "00000000-0000-0000-0000-000000000002",
-        "email": "test-starter@makedecodables.com",
+        "email": "test-starter@foliaz.com",
         "tier": "t2",
         "role": "user",
     },
     "pro": {
         "user_id": "00000000-0000-0000-0000-000000000003",
-        "email": "test-pro@makedecodables.com",
+        "email": "test-pro@foliaz.com",
         "tier": "t3",
         "role": "user",
     },
     "admin": {
         "user_id": "00000000-0000-0000-0000-000000000099",
-        "email": "test-admin@makedecodables.com",
+        "email": "test-admin@foliaz.com",
         "tier": "t3",
         "role": "admin",
     },
@@ -76,7 +76,7 @@ def generate_test_token(
     now = int(time.time())
     payload = {
         "sub": user_id,
-        "email": email or f"test-{tier}@makedecodables.com",
+        "email": email or f"test-{tier}@foliaz.com",
         "role": role,
         "tier": tier,
         "type": "access",

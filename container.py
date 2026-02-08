@@ -319,7 +319,7 @@ class Container:
             import config
             self._services['auth_email'] = EmailService(
                 resend_api_key=getattr(config, 'RESEND_API_KEY', '') or '',
-                from_email=getattr(config, 'SUPPORT_EMAIL_FROM', 'noreply@makedecodables.com'),
+                from_email=getattr(config, 'SUPPORT_EMAIL_FROM', 'noreply@foliaz.com'),
                 frontend_url=getattr(config, 'FRONTEND_URL', 'http://localhost:3000'),
             )
         return self._services['auth_email']

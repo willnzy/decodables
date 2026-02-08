@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://makedecodables.com/schemas/canvas-data.json",
+  "$id": "https://foliaz.com/schemas/canvas-data.json",
   "title": "Canvas Data Schema",
   "description": "JSON Schema for project canvas_data (Fabric.js format)",
   "type": "object",

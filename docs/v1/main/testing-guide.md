@@ -693,7 +693,7 @@ jobs:
       - name: Run tests against staging
         run: |
           pytest tests/integration/ \
-                 --base-url=https://staging-api.makedecodables.com \
+                 --base-url=https://staging-api.foliaz.com \
                  -v
         env:
           # 使用真实的 staging 环境变量
@@ -816,7 +816,7 @@ result = supabase.rpc(
 # 见 BACKEND-DEVELOPMENT-SOP.md Phase 3
 
 locust -f tests/load/locustfile.py \
-       --host=https://staging-api.makedecodables.com \
+       --host=https://staging-api.foliaz.com \
        --users=100 \
        --spawn-rate=10
 ```

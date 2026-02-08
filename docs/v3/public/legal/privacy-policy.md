@@ -85,4 +85,4 @@
 
 ## 9. 联系我们
 
-隐私相关问题请联系：privacy@makedecodables.com
+隐私相关问题请联系：privacy@foliaz.com

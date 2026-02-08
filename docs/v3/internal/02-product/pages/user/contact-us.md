@@ -43,7 +43,7 @@
 │  │  Contact Form      │   Contact Info                  │ │
 │  │                    │                                 │ │
 │  │  [Name        ]    │   📧 Email                      │ │
-│  │  [Email       ]    │   support@makedecodables.com    │ │
+│  │  [Email       ]    │   info@foliaz.com    │ │
 │  │  [Subject  ▼  ]    │                                 │ │
 │  │  [Message     ]    │   🕐 Response Time              │ │
 │  │  [            ]    │   Within 24-48 hours            │ │
@@ -129,7 +129,7 @@ async def handle_contact_form(data: ContactFormData):
     
     # 2. 发送邮件给 support
     await email_service.send(
-        to='support@makedecodables.com',
+        to='info@foliaz.com',
         subject=f'[Contact Form] {data.subject}',
         body=format_contact_email(data)
     )

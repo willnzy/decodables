@@ -71,5 +71,5 @@
 ## 仍需帮助？
 
 如果以上方法都无法解决问题，请联系客服：
-- 邮箱：support@makedecodables.com
+- 邮箱：info@foliaz.com
 - 在线客服：网站右下角

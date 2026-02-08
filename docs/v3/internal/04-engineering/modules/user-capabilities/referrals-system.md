@@ -212,7 +212,7 @@ async def complete_referral(self, referral_id: str) -> Optional[ReferralEntity]:
 ```json
 {
     "code": "ABCD-1234",
-    "share_url": "https://makedecodables.com/r/ABCD-1234"
+    "share_url": "https://foliaz.com/r/ABCD-1234"
 }
 ```
 

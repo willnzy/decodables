@@ -22,7 +22,7 @@ Make Decodables 是专为 K-2 教师设计的在线编辑工具，帮助您轻�
 
 ### 1.1 访问网站
 
-打开浏览器，访问 [makedecodables.com](https://makedecodables.com)
+打开浏览器，访问 [foliaz.com](https://foliaz.com)
 
 ### 1.2 点击注册
 
@@ -174,16 +174,16 @@ Make Decodables 是专为 K-2 教师设计的在线编辑工具，帮助您轻�
 恭喜您完成了第一本小书！接下来可以：
 
 - 📖 [编辑器完整指南](../editor/index.md) - 学习更多高级功能
-- 📚 [模板库](https://makedecodables.com/templates) - 探索更多模板
+- 📚 [模板库](https://foliaz.com/templates) - 探索更多模板
 - ❓ [常见问题](../../faq/general.md) - 解决常见问题
 
 ---
 
 ## 需要帮助？
 
-- 📧 邮件支持: support@makedecodables.com
+- 📧 邮件支持: info@foliaz.com
 - 💬 在线客服: 右下角聊天图标
-- 📚 帮助文档: [help.makedecodables.com](https://help.makedecodables.com)
+- 📚 帮助文档: [help.foliaz.com](https://help.foliaz.com)
 
 ---
 

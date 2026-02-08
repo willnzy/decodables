@@ -92,7 +92,7 @@ LOG_LEVEL=INFO
 
 ```bash
 # API
-NEXT_PUBLIC_API_URL=https://api.makedecodables.com
+NEXT_PUBLIC_API_URL=https://api.foliaz.com
 NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
 

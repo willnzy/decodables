@@ -10,7 +10,7 @@
 
 ### 1. 访问注册页
 
-前往 [注册页面](https://makedecodables.com/sign-up)
+前往 [注册页面](https://foliaz.com/sign-up)
 
 ### 2. 输入邮箱
 

@@ -2355,7 +2355,7 @@ Check your card has sufficient funds. Disable popup blockers (Stripe opens in a 
 
 ## Steps to fix
 
-1. Disable popup blockers for makedecodables.com
+1. Disable popup blockers for foliaz.com
 2. Try a different payment card
 3. Use a different browser (Chrome recommended)
 4. Contact your bank if the card is being declined

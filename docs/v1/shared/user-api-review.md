@@ -1181,7 +1181,7 @@
   "request_id": "req_abc123",
   "user_code": "26010914305278900123456789",
   "session_id": "sess_xxx",
-  "page_url": "https://app.makedecodables.com/editor",
+  "page_url": "https://app.foliaz.com/editor",
   "user_agent": "Mozilla/5.0...",
   "stack_trace": "Error: Failed to fetch...",
   "context": { "attempt": 1 },

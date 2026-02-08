@@ -43,7 +43,7 @@ class TestValidateThumbnailUrl:
 
     def test_http_scheme_rejected(self):
         """HTTP URLs are rejected (only HTTPS allowed)."""
-        url = "http://cdn.makedecodables.com/image.png"
+        url = "http://cdn.foliaz.com/image.png"
         is_valid, error = validate_thumbnail_url(url)
         assert is_valid is False
         assert "scheme" in error.lower()

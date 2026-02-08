@@ -33,8 +33,8 @@ STRIPE_API_VERSION = os.environ.get("STRIPE_API_VERSION", "2024-12-18.acacia")
 
 # Email (Resend)
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
-SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "support@makedecodables.com")
-SUPPORT_EMAIL_FROM = os.environ.get("SUPPORT_EMAIL_FROM", "noreply@makedecodables.com")
+SUPPORT_EMAIL = os.environ.get("SUPPORT_EMAIL", "info@foliaz.com")
+SUPPORT_EMAIL_FROM = os.environ.get("SUPPORT_EMAIL_FROM", "noreply@foliaz.com")
 
 # OpenAI Assistant (for AI Support Chat)
 OPENAI_ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
@@ -44,8 +44,8 @@ CORS_ORIGINS: List[str] = [
     "http://localhost:3000",                       # Local development
     "http://127.0.0.1:3000",                       # Local development (fallback)
     "https://makedecodables.vercel.app",           # Vercel preview (develop branch)
-    "https://makedecodables.com",                  # Production domain
-    "https://www.makedecodables.com",              # Production domain (www)
+    "https://foliaz.com",                  # Production domain
+    "https://www.foliaz.com",              # Production domain (www)
     "https://make-decodables.vercel.app",          # Vercel legacy
     "https://decodables-staging.up.railway.app",   # Railway API (staging)
     "https://decodables-production.up.railway.app" # Railway API (production)

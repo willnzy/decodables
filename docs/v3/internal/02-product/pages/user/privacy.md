@@ -166,7 +166,7 @@ Unsubscribe from marketing communications.
 ### Withdraw Consent
 Withdraw consent where processing is based on consent.
 
-To exercise these rights, contact: privacy@makedecodables.com
+To exercise these rights, contact: privacy@foliaz.com
 ```
 
 ### 3.5 儿童隐私

@@ -41,4 +41,4 @@
 ## 联系我们
 
 如有问题，请通过以下方式联系：
-- 邮箱: support@makedecodables.com
+- 邮箱: info@foliaz.com

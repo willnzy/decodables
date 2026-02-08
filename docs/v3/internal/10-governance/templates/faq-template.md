@@ -56,7 +56,7 @@ FAQ 文档用于网站 FAQ 页面和 AI 客服知识库，需要使用用户友�
 如果您的问题未在此列出，可以：
 - 查看 [帮助中心](/manual)
 - 联系 [在线客服](/contact)
-- 发送邮件至 support@makedecodables.com
+- 发送邮件至 info@foliaz.com
 ```
 
 ---

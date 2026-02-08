@@ -821,7 +821,7 @@ access_token = self._token_svc.create_access_token(
 // 在 POST handler 开头添加 Origin 校验 (行 32 之前)
 
 const ALLOWED_ORIGINS = new Set([
-  process.env.NEXT_PUBLIC_APP_URL,           // e.g., https://makedecodables.com
+  process.env.NEXT_PUBLIC_APP_URL,           // e.g., https://foliaz.com
   'http://localhost:3000',                     // 本地开发
 ].filter(Boolean))
 

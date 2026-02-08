@@ -98,7 +98,7 @@ ALLOWED_THUMBNAIL_HOSTS = {
     # Supabase storage
     "supabase.co",
     # Common CDNs that might be used
-    "cdn.makedecodables.com",
+    "cdn.foliaz.com",
     "storage.googleapis.com",
     "cloudflare-ipfs.com",
     # Add your actual CDN domains here
@@ -494,7 +494,7 @@ ALLOWED_REFERENCE_IMAGE_HOSTS = {
     # Supabase storage
     "supabase.co",
     # Common CDNs
-    "cdn.makedecodables.com",
+    "cdn.foliaz.com",
     "storage.googleapis.com",
     "cloudflare-ipfs.com",
     # FAL.ai CDN (for generated images as reference)
