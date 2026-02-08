@@ -1462,48 +1462,10 @@ COMMENT ON FUNCTION update_webhook_result IS 'Update Stripe webhook processing r
 --   - docs/shared/entitlement/10-workspace-override.md
 
 -- ----------------------------------------------------------------------------
--- 1. credit_pools - 积分池表 (二维模型核心)
+-- [DELETED] credit_pools 表已删除 (2026-02-08)
+-- 积分架构确认使用 profiles.credits_monthly + credits_permanent 双列方案
+-- 池化 (N 池 FEFO) 不需要; 收支来源通过 credit_transactions.source_type 记录
 -- ----------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS credit_pools (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-
-    -- 来源类型
-    source_type VARCHAR(30) NOT NULL CHECK (source_type IN (
-        'subscription',      -- 订阅发放
-        'purchase',          -- 用户购买
-        'bonus_signup',      -- 注册赠送
-        'bonus_referral',    -- 邀请奖励
-        'bonus_campaign',    -- 营销活动
-        'compensation',      -- 客服补偿
-        'earning'            -- 销售收入
-    )),
-
-    -- 余额与有效期
-    balance INT NOT NULL DEFAULT 0 CHECK (balance >= 0),
-    expires_at TIMESTAMPTZ,  -- NULL = 永久有效
-
-    -- 来源追踪
-    source_id TEXT,          -- 关联的订单/活动/交易 ID
-    description TEXT,        -- 描述信息
-
-    -- 元数据
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- 索引：支持 FEFO 扣费查询
-CREATE INDEX IF NOT EXISTS idx_credit_pools_user_expiry
-ON credit_pools(user_id, COALESCE(expires_at, '9999-12-31'::timestamptz), source_type);
-
--- 索引：按用户查询
-CREATE INDEX IF NOT EXISTS idx_credit_pools_user ON credit_pools(user_id);
-
--- 索引：过期积分清理
-CREATE INDEX IF NOT EXISTS idx_credit_pools_expires ON credit_pools(expires_at)
-WHERE expires_at IS NOT NULL AND balance > 0;
-
-COMMENT ON TABLE credit_pools IS '积分池表：支持二维模型（来源类型 + 有效期），FEFO 扣费策略';
 
 
 -- ----------------------------------------------------------------------------
