@@ -124,6 +124,11 @@ CREATE TABLE IF NOT EXISTS profiles (
     cancel_at TIMESTAMPTZ,  -- 期末取消的具体时间点 (Stripe current_period_end)
     pending_tier_change TEXT DEFAULT NULL CHECK (pending_tier_change IS NULL OR pending_tier_change IN ('t1', 't2', 't3')),  -- 期末降级目标 tier
 
+    -- 订阅暂停追踪 (ALTER-003: Phase 1 预置列, Phase 2/3 使用)
+    is_paused BOOLEAN NOT NULL DEFAULT FALSE,
+    paused_at TIMESTAMPTZ,
+    pause_metadata JSONB DEFAULT '{}'::jsonb,  -- {pause_reason, auto_resume_date, max_pause_days}
+
     -- 偏好设置
     language TEXT DEFAULT 'en' CHECK (language IN ('en', 'zh', 'es', 'fr', 'de', 'ja', 'ko')),
     timezone TEXT DEFAULT 'UTC',
@@ -1077,21 +1082,40 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
     -- tx_type: ⚠️ DEPRECATED — Repository 历史遗留字段，新代码应使用 transaction_type
     --   触发器 trg_sync_credit_transaction_type 自动双向同步两个字段
     -- 至少一个必须有值，两个都有值时必须相同
+    -- ALTER-009 Phase 1 宽松版: 同时允许旧名(16) + 新名(19) = 29 种合集
+    -- Phase 2 代码对齐后收紧为仅 19 种 TARGET 名称
+    -- [CURRENT 保留] subscription_grant, admin_adjustment, monthly_reset, marketplace_purchase, monthly_credits_cleared, refund_reversal
+    -- [CURRENT → Phase 2 删除] purchase, ai_generation, smart_scan, refund, signup_bonus, referral_bonus, campaign_reward, expiration, topup_purchase, sub_grant
+    -- [TARGET 新增] credit_purchase, credit_consume, bonus_signup_grant, bonus_referral_grant, bonus_campaign_grant, compensation_grant, promotion_grant, marketplace_earning, manual_correction, credits_expired, chargeback_reversal, subscription_upgrade, subscription_downgrade
     transaction_type TEXT CHECK (transaction_type IN (
-        'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
-        'refund', 'admin_adjustment', 'signup_bonus', 'referral_bonus',
-        'campaign_reward', 'expiration', 'topup_purchase', 'sub_grant',
-        'monthly_reset', 'marketplace_purchase',
-        'monthly_credits_cleared', 'refund_reversal'
+        -- [CURRENT] 旧名 (Phase 2 后移除)
+        'purchase', 'ai_generation', 'smart_scan', 'refund',
+        'signup_bonus', 'referral_bonus', 'campaign_reward',
+        'expiration', 'topup_purchase', 'sub_grant',
+        -- [CURRENT+TARGET] 保留名 (新旧通用)
+        'subscription_grant', 'admin_adjustment', 'monthly_reset',
+        'marketplace_purchase', 'monthly_credits_cleared', 'refund_reversal',
+        -- [TARGET] 新名 (Phase 2 开始使用)
+        'credit_purchase', 'credit_consume',
+        'bonus_signup_grant', 'bonus_referral_grant', 'bonus_campaign_grant',
+        'compensation_grant', 'promotion_grant', 'marketplace_earning',
+        'manual_correction', 'credits_expired', 'chargeback_reversal',
+        'subscription_upgrade', 'subscription_downgrade'
     )),
     -- ⚠️ DEPRECATED: tx_type 已废弃，新代码请使用 transaction_type
     -- 保留仅为向后兼容，触发器自动同步值
     tx_type TEXT CHECK (tx_type IN (
-        'subscription_grant', 'purchase', 'ai_generation', 'smart_scan',
-        'refund', 'admin_adjustment', 'signup_bonus', 'referral_bonus',
-        'campaign_reward', 'expiration', 'topup_purchase', 'sub_grant',
-        'monthly_reset', 'marketplace_purchase',
-        'monthly_credits_cleared', 'refund_reversal'
+        -- 同 transaction_type 宽松版 (ALTER-009 Phase 1)
+        'purchase', 'ai_generation', 'smart_scan', 'refund',
+        'signup_bonus', 'referral_bonus', 'campaign_reward',
+        'expiration', 'topup_purchase', 'sub_grant',
+        'subscription_grant', 'admin_adjustment', 'monthly_reset',
+        'marketplace_purchase', 'monthly_credits_cleared', 'refund_reversal',
+        'credit_purchase', 'credit_consume',
+        'bonus_signup_grant', 'bonus_referral_grant', 'bonus_campaign_grant',
+        'compensation_grant', 'promotion_grant', 'marketplace_earning',
+        'manual_correction', 'credits_expired', 'chargeback_reversal',
+        'subscription_upgrade', 'subscription_downgrade'
     )),
 
     bucket TEXT NOT NULL CHECK (bucket IN ('monthly', 'permanent')),
@@ -1380,7 +1404,7 @@ CREATE TABLE IF NOT EXISTS subscription_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     tier TEXT NOT NULL CHECK (tier IN ('t1', 't2', 't3')),
-    action TEXT NOT NULL CHECK (action IN ('upgrade', 'downgrade', 'cancel', 'renew')),
+    action TEXT NOT NULL CHECK (action IN ('upgrade', 'downgrade', 'cancel', 'renew', 'pause', 'resume', 'cycle_change')),  -- ALTER-002: +pause/resume/cycle_change
     stripe_subscription_id TEXT,
     stripe_event_id TEXT,
     effective_date TIMESTAMPTZ NOT NULL,
@@ -4072,6 +4096,56 @@ $$
 SET search_path = 'public';
 
 COMMENT ON FUNCTION get_or_create_default_workspace IS '原子性获取或创建用户默认 workspace，防止并发重复创建';
+
+
+-- ============================================================================
+-- MIG-002: Entitlement Phase 1 新表
+-- ============================================================================
+
+-- ----------------------------------------------------------------------------
+-- free_quota_usage (AI 免费配额追踪)
+-- 追踪免费用户的每日/每月 AI 功能使用量, 实现 "t1 每天 3 次免费 AI 生成" 等限制
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS free_quota_usage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    feature_key VARCHAR(50) NOT NULL,         -- 对应 FeatureKey: ai_generate_asset, smart_scan 等
+    period_start DATE NOT NULL,               -- 配额周期起始日 (daily=当天, monthly=月初)
+    period_type VARCHAR(20) NOT NULL DEFAULT 'daily' CHECK (period_type IN ('daily', 'monthly')),
+    used_count INTEGER NOT NULL DEFAULT 0 CHECK (used_count >= 0),
+    quota_limit INTEGER NOT NULL CHECK (quota_limit > 0),
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, feature_key, period_start, period_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_fqu_user_period
+    ON free_quota_usage(user_id, period_start);
+
+-- ----------------------------------------------------------------------------
+-- reconciliation_results (积分对账审计)
+-- 每日/手动对账任务的结果记录, 用于发现 credits_monthly + credits_permanent 与
+-- credit_transactions 之间的不一致
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS reconciliation_results (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reconciliation_date DATE NOT NULL,
+    user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    expected_monthly INTEGER,
+    actual_monthly INTEGER,
+    expected_permanent INTEGER,
+    actual_permanent INTEGER,
+    discrepancy_amount INTEGER NOT NULL DEFAULT 0,
+    resolution_status VARCHAR(20) DEFAULT 'pending'
+        CHECK (resolution_status IN ('pending', 'resolved', 'ignored', 'escalated')),
+    resolution_notes TEXT,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_recon_date
+    ON reconciliation_results(reconciliation_date);
+CREATE INDEX IF NOT EXISTS idx_recon_status_pending
+    ON reconciliation_results(resolution_status) WHERE resolution_status = 'pending';
 
 
 -- ============================================================================

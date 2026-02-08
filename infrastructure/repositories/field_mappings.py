@@ -45,6 +45,12 @@ PROFILES_DB_TO_DOMAIN: Dict[str, str] = {
     'subscription_status': 'subscription_status',  # TEXT
     'subscription_current_period_start': 'subscription_current_period_start',  # TIMESTAMPTZ
     'subscription_current_period_end': 'subscription_current_period_end',  # TIMESTAMPTZ
+    'cancel_at_period_end': 'cancel_at_period_end',  # BOOLEAN
+    'cancel_at': 'cancel_at',               # TIMESTAMPTZ
+    'pending_tier_change': 'pending_tier_change',  # TEXT
+    'is_paused': 'is_paused',               # BOOLEAN (ALTER-003)
+    'paused_at': 'paused_at',               # TIMESTAMPTZ (ALTER-003)
+    'pause_metadata': 'pause_metadata',      # JSONB (ALTER-003)
     'language': 'language',                   # TEXT
     'timezone': 'timezone',                   # TEXT
     'notification_email_enabled': 'notification_email_enabled',  # BOOLEAN
@@ -1170,6 +1176,34 @@ USER_PRICE_OVERRIDES_DB_TO_DOMAIN: Dict[str, str] = {
     'created_by': 'created_by',
     'created_at': 'created_at',
     'updated_at': 'updated_at',
+}
+
+# free_quota_usage 表 → FreeQuotaUsage (MIG-002: AI 免费配额追踪)
+FREE_QUOTA_USAGE_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',                              # UUID
+    'user_id': 'user_id',                    # UUID
+    'feature_key': 'feature_key',            # VARCHAR(50)
+    'period_start': 'period_start',          # DATE
+    'period_type': 'period_type',            # VARCHAR(20)
+    'used_count': 'used_count',              # INTEGER
+    'quota_limit': 'quota_limit',            # INTEGER
+    'created_at': 'created_at',              # TIMESTAMPTZ
+    'updated_at': 'updated_at',              # TIMESTAMPTZ
+}
+
+# reconciliation_results 表 → ReconciliationResult (MIG-002: 积分对账审计)
+RECONCILIATION_RESULTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'id',                              # UUID
+    'reconciliation_date': 'reconciliation_date',  # DATE
+    'user_id': 'user_id',                    # UUID
+    'expected_monthly': 'expected_monthly',  # INTEGER
+    'actual_monthly': 'actual_monthly',      # INTEGER
+    'expected_permanent': 'expected_permanent',  # INTEGER
+    'actual_permanent': 'actual_permanent',  # INTEGER
+    'discrepancy_amount': 'discrepancy_amount',  # INTEGER
+    'resolution_status': 'resolution_status',  # VARCHAR(20)
+    'resolution_notes': 'resolution_notes',  # TEXT
+    'created_at': 'created_at',              # TIMESTAMPTZ
 }
 
 # ============================================================

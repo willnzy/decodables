@@ -187,9 +187,12 @@ CREATE TABLE IF NOT EXISTS config_audit_logs (
     config_key TEXT NOT NULL,
     old_value TEXT,
     new_value TEXT,
-    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete')),
+    action TEXT NOT NULL CHECK (action IN ('create', 'update', 'delete', 'rollback')),  -- ALTER-006: +rollback
     changed_by UUID,
-    changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    changed_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    -- ALTER-006: 回滚支持字段
+    rollback_reason TEXT,                    -- 回滚原因 (仅 action='rollback' 时填写)
+    rollback_group_id UUID                   -- 批量回滚组 ID (同一次回滚操作关联多条记录)
 );
 
 
@@ -1474,7 +1477,16 @@ COMMENT ON FUNCTION update_webhook_result IS 'Update Stripe webhook processing r
 CREATE TABLE IF NOT EXISTS user_feature_overrides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    feature_key TEXT NOT NULL,           -- 功能 Key, 如 'smart_scan', 'ai_features'
+    -- ALTER-008: feature_key 限制为 19 个活跃 FeatureKey
+    feature_key TEXT NOT NULL CHECK (feature_key IN (
+        'pdf_export', 'pdf_print', 'zip_export', 'clipboard_paste',
+        'upload_image', 'upload_advanced', 'save_assets',
+        'ai_generate_asset', 'ai_generate_page', 'smart_scan',
+        'browse_marketplace', 'purchase_marketplace',
+        'publish_paid', 'publish_free',
+        'member_management', 'trash_recovery', 'project_templates',
+        'share_public_link', 'can_purchase_credits'
+    )),
     override_value TEXT NOT NULL CHECK (override_value IN ('true', 'false', 'trial')),
     reason TEXT,                         -- 覆盖原因 (运营记录)
     expires_at TIMESTAMPTZ,              -- 过期时间 (可选, NULL=永久)
@@ -1558,7 +1570,16 @@ COMMENT ON TABLE user_group_members IS '用户组成员表';
 CREATE TABLE IF NOT EXISTS group_feature_overrides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID NOT NULL REFERENCES user_groups(id) ON DELETE CASCADE,
-    feature_key TEXT NOT NULL,
+    -- ALTER-008: feature_key 限制为 19 个活跃 FeatureKey
+    feature_key TEXT NOT NULL CHECK (feature_key IN (
+        'pdf_export', 'pdf_print', 'zip_export', 'clipboard_paste',
+        'upload_image', 'upload_advanced', 'save_assets',
+        'ai_generate_asset', 'ai_generate_page', 'smart_scan',
+        'browse_marketplace', 'purchase_marketplace',
+        'publish_paid', 'publish_free',
+        'member_management', 'trash_recovery', 'project_templates',
+        'share_public_link', 'can_purchase_credits'
+    )),
     override_value TEXT NOT NULL CHECK (override_value IN ('true', 'false', 'trial')),
     reason TEXT,
     expires_at TIMESTAMPTZ,                  -- 权限过期时间 (可选)
@@ -1602,7 +1623,16 @@ COMMENT ON TABLE group_feature_override_logs IS '组级权限覆盖审计日志'
 CREATE TABLE IF NOT EXISTS workspace_feature_overrides (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-    feature_key TEXT NOT NULL,
+    -- ALTER-008: feature_key 限制为 19 个活跃 FeatureKey
+    feature_key TEXT NOT NULL CHECK (feature_key IN (
+        'pdf_export', 'pdf_print', 'zip_export', 'clipboard_paste',
+        'upload_image', 'upload_advanced', 'save_assets',
+        'ai_generate_asset', 'ai_generate_page', 'smart_scan',
+        'browse_marketplace', 'purchase_marketplace',
+        'publish_paid', 'publish_free',
+        'member_management', 'trash_recovery', 'project_templates',
+        'share_public_link', 'can_purchase_credits'
+    )),
     override_value TEXT NOT NULL CHECK (override_value IN ('true', 'false', 'trial')),
     reason TEXT,                             -- 如 'Enterprise 试用', 'Team Plan 权益'
     expires_at TIMESTAMPTZ,
