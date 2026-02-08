@@ -43,7 +43,7 @@ OPENAI_ASSISTANT_ID = os.environ.get("OPENAI_ASSISTANT_ID")
 CORS_ORIGINS: List[str] = [
     "http://localhost:3000",                       # Local development
     "http://127.0.0.1:3000",                       # Local development (fallback)
-    "https://makedecodables.vercel.app",           # Vercel preview (develop branch)
+    "https://foliaz.vercel.app",           # Vercel preview (develop branch)
     "https://foliaz.com",                  # Production domain
     "https://www.foliaz.com",              # Production domain (www)
     "https://make-decodables.vercel.app",          # Vercel legacy

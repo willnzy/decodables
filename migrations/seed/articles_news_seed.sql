@@ -58,7 +58,7 @@ Designed with K-12 educators in mind:
 ## Join Our Community
 
 Follow us for updates, tips, and inspiration:
-- Share your creations with #MakeDecodables
+- Share your creations with #foliaz
 - Join our educator Facebook group
 - Subscribe to our newsletter
 
@@ -484,7 +484,7 @@ For a limited time:
 
 ## Share Your Spring Creations
 
-Tag us @MakeDecodables to share your spring books!
+Tag us @foliaz to share your spring books!
 
 [Explore Spring Templates →](/dashboard?category=spring)
 

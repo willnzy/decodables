@@ -1876,7 +1876,7 @@ interface SearchResponse {
 
 import { openDB, IDBPDatabase } from 'idb';
 
-const DB_NAME = 'makedecodables-assets';
+const DB_NAME = 'foliaz-assets';
 const DB_VERSION = 1;
 
 interface CacheDB {

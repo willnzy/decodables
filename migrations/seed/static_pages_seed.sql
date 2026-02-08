@@ -878,7 +878,7 @@ Email us your feature request at {{site.email}} with "Feature Request" in the su
 
 Follow us for updates, tips, and inspiration:
 
-- Share your creations with **#MakeDecodables**
+- Share your creations with **#foliaz**
 - Join our educator community
 
 ---

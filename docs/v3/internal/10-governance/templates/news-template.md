@@ -170,7 +170,7 @@ image: "/images/news/{image-name}.jpg"
 {亮点 1}
 {亮点 2}
 
-{链接} #MakeDecodables #标签
+{链接} #foliaz #标签
 ```
 
 ### LinkedIn
