@@ -77,6 +77,20 @@ class FeatureFlagService:
         """获取Flag"""
         return await self.repository.get_by_key(key)
 
+    async def get_flag_by_key(self, key: str) -> Optional[FeatureFlagEntity]:
+        """Phase 3 SVC-003: 按 key 获取 Flag (PriorityEvaluator 调用).
+
+        返回 FeatureFlagEntity, 包含 .enabled 和 .rollout_percentage 属性.
+        PriorityEvaluator L2 (Kill Switch) 和 L4 (Feature Gate) 使用此方法.
+
+        Args:
+            key: Feature flag key (e.g., "ai_generate_asset")
+
+        Returns:
+            FeatureFlagEntity or None (flag 不存在)
+        """
+        return await self.repository.get_by_key(key)
+
     async def list_flags(
         self,
         flag_type: Optional[str] = None,

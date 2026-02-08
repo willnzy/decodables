@@ -11,7 +11,7 @@ All credit configurations (costs, allowances, signup bonus) are now fetched from
 TierService (system_configs) instead of hardcoded values.
 """
 
-from typing import Optional, List, TYPE_CHECKING
+from typing import Dict, Optional, List, TYPE_CHECKING
 from datetime import datetime
 import logging
 
@@ -346,6 +346,130 @@ class BillingService:
             start_date=start_date,
             end_date=end_date,
         )
+
+    # =========================================================================
+    # Phase 3 SVC-006: Enhanced Credit Operations
+    # =========================================================================
+
+    async def grant_credits(
+        self,
+        user_id: str,
+        amount: int,
+        tx_type: TransactionType,
+        bucket: CreditBucket = CreditBucket.PERMANENT,
+        description: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> CreditTransaction:
+        """Phase 3 SVC-006: 通用积分发放方法.
+
+        支持多种发放场景: 补偿、促销、推荐奖励等.
+
+        Args:
+            user_id: 用户 ID
+            amount: 发放数量 (正数)
+            tx_type: 交易类型 (e.g., COMPENSATION_GRANT, PROMOTION_GRANT)
+            bucket: 目标桶 (默认 PERMANENT)
+            description: 描述
+            idempotency_key: 幂等键
+
+        Returns:
+            CreditTransaction 记录
+        """
+        if amount <= 0:
+            raise InvalidAmountException(amount, "Grant amount must be positive")
+
+        return await self.add_credits(
+            user_id=user_id,
+            amount=amount,
+            bucket=bucket,
+            tx_type=tx_type,
+            description=description,
+            idempotency_key=idempotency_key,
+        )
+
+    async def refund_credits(
+        self,
+        user_id: str,
+        amount: int,
+        reason: str,
+        original_tx_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> CreditTransaction:
+        """Phase 3 SVC-006: 退款 — 将积分退回用户.
+
+        Args:
+            user_id: 用户 ID
+            amount: 退款数量 (正数)
+            reason: 退款原因
+            original_tx_id: 原始交易 ID (可选, 用于审计追踪)
+            idempotency_key: 幂等键
+
+        Returns:
+            CreditTransaction 记录
+        """
+        if amount <= 0:
+            raise InvalidAmountException(amount, "Refund amount must be positive")
+
+        description = f"Refund: {reason}"
+        if original_tx_id:
+            description += f" (original_tx: {original_tx_id})"
+
+        return await self.add_credits(
+            user_id=user_id,
+            amount=amount,
+            bucket=CreditBucket.PERMANENT,  # 退款进入 permanent 桶
+            tx_type=TransactionType.REFUND_REVERSAL,
+            description=description,
+            idempotency_key=idempotency_key or f"refund_{original_tx_id or user_id}",
+        )
+
+    async def execute_marketplace_purchase(
+        self,
+        buyer_id: str,
+        seller_id: str,
+        amount: int,
+        listing_id: str,
+        idempotency_key: Optional[str] = None,
+    ) -> Dict[str, CreditTransaction]:
+        """Phase 3 SVC-006: 市场交易 — 买方扣减 + 卖方收入.
+
+        原子性: 两笔交易使用同一个 idempotency_key 前缀.
+
+        Args:
+            buyer_id: 买方用户 ID
+            seller_id: 卖方用户 ID
+            amount: 交易金额 (积分)
+            listing_id: 商品 ID
+            idempotency_key: 幂等键
+
+        Returns:
+            {"buyer_tx": CreditTransaction, "seller_tx": CreditTransaction}
+        """
+        if amount <= 0:
+            raise InvalidAmountException(amount, "Purchase amount must be positive")
+
+        base_key = idempotency_key or f"marketplace_{listing_id}_{buyer_id}"
+
+        # 1. 买方扣减
+        buyer_tx = await self.deduct_credits(
+            user_id=buyer_id,
+            amount=amount,
+            tx_type=TransactionType.MARKETPLACE_PURCHASE,
+            description=f"Marketplace purchase: listing {listing_id}",
+            idempotency_key=f"{base_key}_buyer",
+        )
+
+        # 2. 卖方收入
+        seller_tx = await self.add_credits(
+            user_id=seller_id,
+            amount=amount,
+            bucket=CreditBucket.PERMANENT,
+            tx_type=TransactionType.MARKETPLACE_EARNING,
+            description=f"Marketplace earning: listing {listing_id}",
+            idempotency_key=f"{base_key}_seller",
+        )
+
+        return {"buyer_tx": buyer_tx, "seller_tx": seller_tx}
 
     def _operation_to_tx_type(self, operation: str) -> TransactionType:
         """Map operation name to transaction type.

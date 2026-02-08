@@ -661,6 +661,10 @@ DECLARE
     v_deduct_monthly INT;
     v_deduct_permanent INT;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '5s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 输入验证
     IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, 0, 0, 'Invalid user_id'::TEXT;
@@ -791,6 +795,10 @@ DECLARE
     v_monthly INT;
     v_permanent INT;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '5s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 输入验证
     IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, 0, 0, 'Invalid user_id'::TEXT;
@@ -896,6 +904,10 @@ DECLARE
     v_payment_id UUID;
     v_existing_payment UUID;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '5s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 输入验证
     IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, NULL::UUID, 0, 0, 'Invalid user_id'::TEXT;
@@ -1029,6 +1041,10 @@ DECLARE
     v_resource_type TEXT;
     v_resource_id UUID;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '5s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 输入验证
     IF p_user_id IS NULL THEN
         RETURN QUERY SELECT FALSE, 'Invalid user_id'::TEXT;

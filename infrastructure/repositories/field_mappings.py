@@ -1109,6 +1109,45 @@ SYSTEM_RESOURCE_AUDIT_LOGS_DB_TO_DOMAIN: Dict[str, str] = {
     'user_agent': 'user_agent',
 }
 
+# user_feature_overrides 表 (Phase 3 REPO-003)
+USER_FEATURE_OVERRIDES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'override_id',
+    'user_id': 'user_id',
+    'feature_key': 'feature_key',
+    'override_value': 'override_value',       # TEXT ('true'/'false'/'trial')
+    'reason': 'reason',
+    'expires_at': 'expires_at',
+    'created_by': 'created_by',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# group_feature_overrides 表 (Phase 3 REPO-003)
+GROUP_FEATURE_OVERRIDES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'override_id',
+    'group_id': 'group_id',
+    'feature_key': 'feature_key',
+    'override_value': 'override_value',
+    'reason': 'reason',
+    'expires_at': 'expires_at',
+    'created_by': 'created_by',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
+# workspace_feature_overrides 表 (Phase 3 REPO-003)
+WORKSPACE_FEATURE_OVERRIDES_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'override_id',
+    'workspace_id': 'workspace_id',
+    'feature_key': 'feature_key',
+    'override_value': 'override_value',
+    'reason': 'reason',
+    'expires_at': 'expires_at',
+    'created_by': 'created_by',
+    'created_at': 'created_at',
+    'updated_at': 'updated_at',
+}
+
 # user_discounts 表
 USER_DISCOUNTS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'discount_id',

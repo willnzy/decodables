@@ -2707,6 +2707,10 @@ DECLARE
     v_current_status TEXT;
     v_payment_id UUID;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '10s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 输入验证
     IF p_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
@@ -2841,6 +2845,10 @@ DECLARE
     v_current_status TEXT;
     v_payment_id UUID;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '10s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 输入验证
     IF p_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
@@ -2961,6 +2969,10 @@ DECLARE
     v_actual_change INT;
     v_tx_type TEXT;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '5s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 输入验证
     IF p_user_id IS NULL THEN
         RETURN jsonb_build_object('success', false, 'error', 'Invalid user_id');
@@ -3065,6 +3077,10 @@ DECLARE
     v_cleared_monthly INTEGER;
     v_payment_id UUID;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '10s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 1. Lock and read current profile
     SELECT id, tier, credits_monthly, credits_permanent, subscription_status,
            cancel_at_period_end, cancel_at, pending_tier_change
@@ -3182,6 +3198,10 @@ DECLARE
     v_new_permanent INTEGER;
     v_payment_id UUID;
 BEGIN
+    -- §22 RPC Safety: lock_timeout + statement_timeout
+    SET LOCAL lock_timeout = '5s';
+    SET LOCAL statement_timeout = '30s';
+
     -- 1. Idempotency check: has this refund already been processed?
     SELECT id INTO v_existing_refund
     FROM payment_records

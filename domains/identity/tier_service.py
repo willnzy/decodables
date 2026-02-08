@@ -569,6 +569,46 @@ class TierService:
             logger.warning(f"Invalid feature value: {feature_value} for {feature_key}")
             return False
 
+    async def get_feature_access(
+        self,
+        user_tier: str,
+        feature: Union[FeatureKey, str],
+        is_trial_active: bool = False
+    ) -> Optional[Union[bool, str]]:
+        """Phase 3 SVC-002: 获取功能权限原始值 (供 PriorityEvaluator L3 调用).
+
+        与 can_use_feature() 不同, 此方法保留 'trial' 标记而非解析为 bool.
+        - True  → 有权限 (Tier 配置)
+        - False → 无权限 (Tier 配置)
+        - 'trial' → 试用期可用 (is_trial_active=True 时返回 'trial', 否则 False)
+
+        Args:
+            user_tier: 用户 Tier (t1/t2/t3/t4)
+            feature: 功能 Key
+            is_trial_active: 是否在试用期
+
+        Returns:
+            True | False | 'trial' | None (未配置)
+        """
+        feature_key = feature.value if isinstance(feature, FeatureKey) else feature
+
+        config = await self.get_tier_config(user_tier)
+        features = config.get("features", {})
+        feature_value = features.get(feature_key)
+
+        if feature_value is None:
+            return None
+
+        if feature_value is True:
+            return True
+        elif feature_value is False:
+            return False
+        elif feature_value == "trial":
+            # 保留 'trial' 标记: 试用期内返回 'trial', 否则 False
+            return "trial" if is_trial_active else False
+        else:
+            return None
+
     async def get_monthly_credits(self, user_tier: str) -> int:
         """获取月度积分额度"""
         config = await self.get_tier_config(user_tier)
