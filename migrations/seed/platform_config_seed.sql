@@ -67,13 +67,25 @@ INSERT INTO pricing_plans (
 
 -- T2: Starter Plan
 INSERT INTO pricing_plans (
-    plan_code, plan_type, plan_name, description,
-    price_cents, original_price_cents, currency,
-    billing_interval, tier, monthly_credits,
-    stripe_price_id_prod, stripe_price_id_dev,
+    plan_code, 
+    plan_type, 
+    plan_name, 
+    description,
+    price_cents, 
+    original_price_cents, 
+    currency,
+    billing_interval, 
+    tier, 
+    monthly_credits,
+    stripe_price_id_prod, 
+    stripe_price_id_dev,
     stripe_product_id,
-    is_active, is_visible, is_featured, sort_order,
-    version, effective_from,
+    is_active, 
+    is_visible, 
+    is_featured, 
+    sort_order,
+    version, 
+    effective_from,
     metadata
 ) VALUES (
     'tier_t2_monthly',
