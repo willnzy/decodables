@@ -1758,6 +1758,48 @@ CREATE POLICY reconciliation_results_service_all ON reconciliation_results
 
 
 -- ============================================================================
+-- MIG-005 Phase 2/3: New tables for feature sunset and workspace permissions
+-- ============================================================================
+
+-- 31. feature_sunset_history (MIG-005 Phase 5+)
+CREATE TABLE IF NOT EXISTS feature_sunset_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    feature_key TEXT NOT NULL,
+    sunset_date TIMESTAMPTZ NOT NULL,
+    reason TEXT,
+    affected_tiers TEXT[] DEFAULT '{}',
+    migration_path TEXT,
+    created_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_feature_sunset_key ON feature_sunset_history(feature_key);
+
+-- 32. workspace_project_permissions (MIG-005 Phase 5+)
+CREATE TABLE IF NOT EXISTS workspace_project_permissions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    permission_level TEXT NOT NULL CHECK (permission_level IN ('view', 'edit', 'admin')),
+    granted_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(workspace_id, project_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wpp_workspace ON workspace_project_permissions(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_wpp_project ON workspace_project_permissions(project_id);
+
+-- RLS
+ALTER TABLE feature_sunset_history ENABLE ROW LEVEL SECURITY;
+CREATE POLICY feature_sunset_service_all ON feature_sunset_history
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+ALTER TABLE workspace_project_permissions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY wpp_service_all ON workspace_project_permissions
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;

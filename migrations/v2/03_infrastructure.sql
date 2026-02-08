@@ -2265,6 +2265,15 @@ COMMENT ON FUNCTION check_webhook_idempotency IS 'WS3: Webhook 事件幂等性�
 
 
 -- ============================================================================
+-- MIG-004 Phase 5+: Legacy system_configs cleanup
+-- ============================================================================
+-- The following keys should be removed after Phase 5 validation:
+-- Legacy keys: 'feature.old_pdf_export', 'feature.old_zip_export' (if present)
+-- Replaced by: tier.{tier}.features JSON with 19 FeatureKey entries
+DELETE FROM system_configs WHERE key LIKE 'feature.old_%' AND key NOT LIKE 'tier.%';
+
+
+-- ============================================================================
 -- 提交事务
 -- ============================================================================
 COMMIT;

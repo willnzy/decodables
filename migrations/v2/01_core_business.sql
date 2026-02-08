@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 
     -- 偏好设置 (P0-3: Repository 使用 preferences，保留 ext_json 作为通用扩展)
     preferences JSONB DEFAULT '{}'::jsonb,
+    notification_preferences JSONB DEFAULT '{"email_marketing": true, "email_transactional": true, "email_product_updates": true}'::jsonb,  -- ALTER-007: Notification preferences
     ext_json JSONB DEFAULT '{}'::jsonb,
 
     -- 创建来源追踪 (用于监控 Webhook vs JIT 创建)

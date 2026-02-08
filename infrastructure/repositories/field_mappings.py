@@ -1272,6 +1272,28 @@ RECONCILIATION_RESULTS_DB_TO_DOMAIN: Dict[str, str] = {
     'created_at': 'created_at',              # TIMESTAMPTZ
 }
 
+# feature_sunset_history 表 → FeatureSunsetHistory (MIG-005 Phase 5+)
+FEATURE_SUNSET_HISTORY_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'sunset_id',                       # UUID
+    'feature_key': 'feature_key',            # VARCHAR(50)
+    'sunset_date': 'sunset_date',            # DATE
+    'reason': 'reason',                      # TEXT
+    'affected_tiers': 'affected_tiers',      # TEXT[]
+    'migration_path': 'migration_path',      # TEXT
+    'created_by': 'created_by',              # UUID
+    'created_at': 'created_at',              # TIMESTAMPTZ
+}
+
+# workspace_project_permissions 表 → WorkspaceProjectPermission (MIG-005 Phase 5+)
+WORKSPACE_PROJECT_PERMISSIONS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'permission_id',                   # UUID
+    'workspace_id': 'workspace_id',          # UUID
+    'project_id': 'project_id',              # UUID
+    'permission_level': 'permission_level',  # INTEGER (0=not_visible, 1=read_only, 2=read_write)
+    'granted_by': 'granted_by',              # UUID
+    'created_at': 'created_at',              # TIMESTAMPTZ
+}
+
 # ============================================================
 # Mapping Utility Functions
 # ============================================================

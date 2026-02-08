@@ -501,6 +501,79 @@ def check_expired_trials():
         )
 
 
+def reconcile_subscription_pauses():
+    """
+    SCHEDULER-003: Auto-resume expired subscription pauses.
+
+    Finds paused subscriptions where pause_resume_at < NOW() and
+    auto-resumes them by setting subscription_status = 'active'
+    and clearing pause metadata.
+
+    Schedule: Daily 2:00 AM UTC.
+
+    WS-19: Uses _run_async_with_timeout for timeout protection.
+    """
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🔄 Starting subscription pause reconciliation...")
+
+    async def _async_reconcile_pauses():
+        """Async wrapper with fresh AsyncClient"""
+        from core.database import create_task_async_client
+
+        db = await create_task_async_client()
+
+        try:
+            # Find paused subscriptions past resume date
+            now = datetime.now(timezone.utc).isoformat()
+            result = await db.table("profiles").select(
+                "id, email, tier, subscription_status, pause_resume_at"
+            ).eq(
+                "subscription_status", "paused"
+            ).lt(
+                "pause_resume_at", now
+            ).execute()
+
+            expired_pauses = result.data or []
+
+            if not expired_pauses:
+                logger.info("[pause_reconcile] No expired pauses found")
+                return {"resumed_count": 0}
+
+            # Batch update: resume subscriptions
+            resumed_count = 0
+            for user in expired_pauses:
+                user_id = user["id"]
+                try:
+                    await db.table("profiles").update({
+                        "subscription_status": "active",
+                        "pause_reason": None,
+                        "pause_resume_at": None,
+                        "updated_at": now,
+                    }).eq(
+                        "id", user_id
+                    ).execute()
+                    resumed_count += 1
+                except Exception as e:
+                    logger.error(
+                        f"[pause_reconcile] Failed to resume subscription for user {user_id}: {e}"
+                    )
+
+            return {"resumed_count": resumed_count}
+
+        finally:
+            if hasattr(db, 'aclose'):
+                await db.aclose()
+                logger.info("[DB] Pause reconciliation async client closed")
+
+    # WS-19: Use timeout wrapper
+    result = _run_async_with_timeout(_async_reconcile_pauses, "reconcile_subscription_pauses", timeout=120)
+    if result:
+        resumed_count = result.get("resumed_count", 0)
+        logger.info(
+            f"[{datetime.now(timezone.utc).isoformat()}] ✅ Subscription pause reconciliation complete: "
+            f"Auto-resumed {resumed_count} paused subscriptions"
+        )
+
+
 def init_scheduler():
     """
     Initialize and start the scheduler
@@ -594,11 +667,21 @@ def init_scheduler():
         misfire_grace_time=3600  # 1 hour grace period
     )
 
+    # SCHEDULER-003 (Phase 5+): Subscription pause reconciliation - run at 2:00 AM UTC daily
+    scheduler.add_job(
+        reconcile_subscription_pauses,
+        CronTrigger(hour=2, minute=0),  # 2:00 AM UTC
+        id="reconcile_subscription_pauses",
+        replace_existing=True,
+        misfire_grace_time=3600  # 1 hour grace period
+    )
+
     # Start the scheduler
     scheduler.start()
     logger.info("📅 Scheduler started with jobs:")
     logger.info("   - Hourly aggregation: every hour at :05")
     logger.info("   - Trial expiration check: 1:00 AM UTC (SCHEDULER-002 / GAP-005)")
+    logger.info("   - Subscription pause reconciliation: 2:00 AM UTC (SCHEDULER-003 Phase 5+)")
     logger.info("   - Daily aggregation: 2:00 AM UTC")
     logger.info("   - Storage cleanup: 3:00 AM UTC (v3.18)")
     logger.info("   - Daily maintenance: 4:00 AM UTC (v3.30)")

@@ -762,3 +762,73 @@ class SupabaseCreditRepository(ICreditRepository):
                 await self.refresh_monthly_credits(user_id, amount)
         except Exception as e:
             logger.warning(f"Error checking credit reset: {e}")
+
+    async def get_balance_snapshot(self, user_id: str) -> Optional[Dict[str, int]]:
+        """
+        Get a snapshot of current credit balances for a user.
+
+        REPO-005 Phase 5+: Returns {monthly, permanent, total} credit amounts.
+
+        Args:
+            user_id: User ID
+
+        Returns:
+            Dict with 'monthly', 'permanent', 'total' keys or None if user not found
+        """
+        try:
+            result = await self.client.table("profiles").select(
+                "credits_monthly, credits_permanent"
+            ).eq("id", user_id).single().execute()
+
+            if not result.data:
+                return None
+
+            data = result.data
+            monthly = data.get("credits_monthly", 0)
+            permanent = data.get("credits_permanent", 0)
+
+            return {
+                "monthly": monthly,
+                "permanent": permanent,
+                "total": monthly + permanent
+            }
+
+        except Exception as e:
+            logger.error(f"Failed to get balance snapshot for user {user_id}: {e}")
+            return None
+
+    async def get_transactions_by_type(
+        self,
+        user_id: str,
+        tx_type: TransactionType,
+        limit: int = 50,
+        offset: int = 0
+    ) -> List[CreditTransaction]:
+        """
+        Get all transactions of a specific type for a user.
+
+        REPO-005 Phase 5+: Filters by transaction type (debit, credit_purchase, etc).
+
+        Args:
+            user_id: User ID
+            tx_type: TransactionType enum to filter by
+            limit: Max number of records
+            offset: Pagination offset
+
+        Returns:
+            List of CreditTransaction objects filtered by type
+        """
+        try:
+            query = self.client.table("credit_transactions").select("*").eq(
+                "user_id", user_id
+            ).eq(
+                "tx_type", tx_type.value
+            ).order("created_at", desc=True).range(offset, offset + limit - 1)
+
+            result = await query.execute()
+
+            return [self._map_to_transaction(row) for row in result.data] if result.data else []
+
+        except Exception as e:
+            logger.error(f"Failed to get transactions by type {tx_type} for user {user_id}: {e}")
+            return []
