@@ -1718,7 +1718,8 @@ CREATE POLICY workspace_feature_overrides_service_all ON workspace_feature_overr
 -- ----------------------------------------------------------------------------
 -- 存储余额对账 (GAP-004) 和 Stripe 对账 (GAP-005) 的差异记录
 -- 仅 service_role 可访问
-CREATE TABLE IF NOT EXISTS reconciliation_results (
+DROP TABLE IF EXISTS reconciliation_results CASCADE;
+CREATE TABLE reconciliation_results (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     reconciliation_type TEXT NOT NULL CHECK (reconciliation_type IN (
         'balance_check', 'stripe_payment', 'stripe_subscription',
@@ -1755,7 +1756,8 @@ CREATE POLICY reconciliation_results_service_all ON reconciliation_results
 -- ============================================================================
 
 -- 31. feature_sunset_history (MIG-005 Phase 5+)
-CREATE TABLE IF NOT EXISTS feature_sunset_history (
+DROP TABLE IF EXISTS feature_sunset_history CASCADE;
+CREATE TABLE feature_sunset_history (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     feature_key TEXT NOT NULL,
     sunset_date TIMESTAMPTZ NOT NULL,
@@ -1769,7 +1771,8 @@ CREATE TABLE IF NOT EXISTS feature_sunset_history (
 CREATE INDEX IF NOT EXISTS idx_feature_sunset_key ON feature_sunset_history(feature_key);
 
 -- 32. workspace_project_permissions (MIG-005 Phase 5+)
-CREATE TABLE IF NOT EXISTS workspace_project_permissions (
+DROP TABLE IF EXISTS workspace_project_permissions CASCADE;
+CREATE TABLE workspace_project_permissions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id UUID NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
