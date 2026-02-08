@@ -572,7 +572,7 @@ async def get_page_content(
 │ GLOBAL_COMPANY_NAME        │ Make Decodables         │ [Edit]   │
 │ GLOBAL_COMPANY_EMAIL       │ info@foliaz.com │ [Edit]   │
 │ GLOBAL_COMPANY_WHATSAPP    │ +1 (725) 290 0525       │ [Edit]   │
-│ GLOBAL_SUPPORT_EMAIL       │ support@foliaz..│ [Edit]   │
+│ GLOBAL_SUPPORT_EMAIL       │ info@foliaz..│ [Edit]   │
 │ GLOBAL_LAST_UPDATED_PRIVACY│ January 3, 2025         │ [Edit]   │
 │ GLOBAL_LAST_UPDATED_TERMS  │ January 3, 2025         │ [Edit]   │
 │ GLOBAL_LAST_UPDATED_BILLING│ December 30, 2024       │ [Edit]   │
