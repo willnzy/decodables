@@ -35,35 +35,43 @@ logger = logging.getLogger(__name__)
 
 
 class FeatureKey(str, Enum):
-    """功能权限 Key - 与 TIER-PERMISSIONS.md 保持一致"""
-    # 导出
+    """功能权限 Key — 19 active keys, 与 ground-truth.json permissions_matrix 保持一致.
+
+    Phase 2 ENUM-001: 从 18 个旧 key 替换为 GT 定义的 19 个 active key.
+    deleted_keys (全开放, 不做权限检查): basic_editor, vector_tools, freehand_tools, platform_assets
+    """
+    # 导出 (2)
     PDF_EXPORT = "pdf_export"
+    PDF_PRINT = "pdf_print"                    # Phase 2 新增 (BUG-003)
     ZIP_EXPORT = "zip_export"
 
-    # 编辑器
-    BASIC_EDITOR = "basic_editor"
-    VECTOR_TOOLS = "vector_tools"
-    FREEHAND_TOOLS = "freehand_tools"
+    # 编辑器 (1)
     CLIPBOARD_PASTE = "clipboard_paste"
 
-    # 素材
-    PLATFORM_ASSETS = "platform_assets"
+    # 素材 (3)
     UPLOAD_IMAGE = "upload_image"
     UPLOAD_ADVANCED = "upload_advanced"
     SAVE_ASSETS = "save_assets"
-    HISTORY_ASSETS = "history_assets"
 
-    # 市场
+    # AI (3) — Phase 2 BUG-004: 从 AI_FEATURES 拆分为 3 个独立 key
+    AI_GENERATE_ASSET = "ai_generate_asset"
+    AI_GENERATE_PAGE = "ai_generate_page"
+    SMART_SCAN = "smart_scan"
+
+    # 市场 (4) — Phase 2 BUG-005: PUBLISH_MARKETPLACE 拆分为 PUBLISH_PAID + PUBLISH_FREE
     BROWSE_MARKETPLACE = "browse_marketplace"
     PURCHASE_MARKETPLACE = "purchase_marketplace"
-    PUBLISH_MARKETPLACE = "publish_marketplace"
+    PUBLISH_PAID = "publish_paid"
+    PUBLISH_FREE = "publish_free"
 
-    # AI
-    AI_FEATURES = "ai_features"
+    # 团队/管理 (3)
+    MEMBER_MANAGEMENT = "member_management"    # Phase 2 新增
+    TRASH_RECOVERY = "trash_recovery"          # Phase 2 新增
+    PROJECT_TEMPLATES = "project_templates"    # Phase 2 新增
 
-    # t4 专属
-    PRIORITY_SUPPORT = "priority_support"
-    API_ACCESS = "api_access"
+    # 分享/购买 (2)
+    SHARE_PUBLIC_LINK = "share_public_link"    # Phase 2 新增
+    CAN_PURCHASE_CREDITS = "can_purchase_credits"  # Phase 2 新增
 
 
 # ==========================================
@@ -74,98 +82,119 @@ class FeatureKey(str, Enum):
 # 与 TIER-PERMISSIONS.md 保持一致。
 # ==========================================
 EMERGENCY_TIER_CONFIGS = {
+    # Phase 2 ENUM-001: 19 active FeatureKeys aligned with GT permissions_matrix
+    # GT columns: [guest, t1_trial, t1_expired, t2, t3, t4]
+    # TIER_T1 = t1_trial column; "trial" means available only during trial period
     TIER_T1: {
-        "monthly_credits": 0,  # Aligned with database system_configs
+        "monthly_credits": 0,
         "max_projects": 1,
         "ai_queue_priority": "low",
         "topup_discount": 1.0,
         "features": {
-            "pdf_export": True,
-            "zip_export": "trial",
-            "basic_editor": "trial",
-            "vector_tools": "trial",
-            "freehand_tools": "trial",
-            "clipboard_paste": "trial",
-            "platform_assets": "trial",
-            "upload_image": "trial",
-            "upload_advanced": "trial",
-            "save_assets": "trial",
-            "history_assets": "trial",
-            "browse_marketplace": "trial",
-            "purchase_marketplace": False,
-            "publish_marketplace": False,
-            "ai_features": "trial",
+            # GT t1_trial column
+            "pdf_export": True,           # [true]
+            "pdf_print": True,            # [true]
+            "zip_export": "trial",        # [true → trial during trial, false after]
+            "clipboard_paste": "trial",   # [true → trial]
+            "upload_image": "trial",      # [true → trial]
+            "upload_advanced": "trial",   # [true → trial]
+            "save_assets": "trial",       # [true → trial]
+            "ai_generate_asset": "trial", # [true → trial] BUG-004 split
+            "ai_generate_page": "trial",  # [true → trial] BUG-004 split
+            "smart_scan": "trial",        # [true → trial] BUG-004 split
+            "browse_marketplace": "trial", # [true → trial]
+            "purchase_marketplace": "trial", # [true → trial]
+            "publish_paid": False,        # [false]  BUG-005 split
+            "publish_free": False,        # [false]  BUG-005 split (t1 cannot publish)
+            "member_management": False,   # [false]
+            "trash_recovery": False,      # [false]
+            "project_templates": "trial", # [true → trial]
+            "share_public_link": False,   # [false]
+            "can_purchase_credits": False, # [false]
         }
     },
     TIER_T2: {
-        "monthly_credits": 100,  # Aligned with database system_configs
+        "monthly_credits": 100,
         "max_projects": 10,
         "ai_queue_priority": "normal",
         "topup_discount": 1.0,
         "features": {
-            "pdf_export": True,
-            "zip_export": False,
-            "basic_editor": True,
-            "vector_tools": False,
-            "freehand_tools": False,
-            "clipboard_paste": False,
-            "platform_assets": True,
-            "upload_image": True,
-            "upload_advanced": False,
-            "save_assets": False,
-            "history_assets": False,
-            "browse_marketplace": True,
-            "purchase_marketplace": False,
-            "publish_marketplace": True,
-            "ai_features": True,
+            # GT t2 column
+            "pdf_export": True,           # [true]
+            "pdf_print": True,            # [true]
+            "zip_export": False,          # [false]
+            "clipboard_paste": False,     # [false]
+            "upload_image": False,        # [false] BUG-001 fix: was True, GT says false
+            "upload_advanced": False,     # [false]
+            "save_assets": False,         # [false]
+            "ai_generate_asset": True,    # [true]  BUG-004 split
+            "ai_generate_page": True,     # [true]  BUG-004 split
+            "smart_scan": False,          # [false] BUG-004 split — t2 has no smart_scan
+            "browse_marketplace": True,   # [true]
+            "purchase_marketplace": True,  # [true]  GT says true (was False!)
+            "publish_paid": False,        # [false] BUG-005 split
+            "publish_free": True,         # [true]  BUG-005 split
+            "member_management": False,   # [false]
+            "trash_recovery": False,      # [false]
+            "project_templates": False,   # [false]
+            "share_public_link": True,    # [true]
+            "can_purchase_credits": True,  # [true]
         }
     },
     TIER_T3: {
-        "monthly_credits": 200,  # Aligned with database system_configs
+        "monthly_credits": 200,
         "max_projects": 200,
         "ai_queue_priority": "high",
         "topup_discount": 0.9,
         "features": {
+            # GT t3 column — all true
             "pdf_export": True,
+            "pdf_print": True,
             "zip_export": True,
-            "basic_editor": True,
-            "vector_tools": True,
-            "freehand_tools": True,
             "clipboard_paste": True,
-            "platform_assets": True,
             "upload_image": True,
             "upload_advanced": True,
             "save_assets": True,
-            "history_assets": True,
+            "ai_generate_asset": True,
+            "ai_generate_page": True,
+            "smart_scan": True,
             "browse_marketplace": True,
             "purchase_marketplace": True,
-            "publish_marketplace": True,
-            "ai_features": True,
+            "publish_paid": True,
+            "publish_free": True,
+            "member_management": True,
+            "trash_recovery": True,
+            "project_templates": True,
+            "share_public_link": True,
+            "can_purchase_credits": True,
         }
     },
     TIER_T4: {
-        "monthly_credits": 500,  # Enterprise tier placeholder
+        "monthly_credits": 500,
         "max_projects": 1000,
         "ai_queue_priority": "high",
         "topup_discount": 0.8,
         "features": {
+            # GT t4 column — all true (enterprise)
             "pdf_export": True,
+            "pdf_print": True,
             "zip_export": True,
-            "basic_editor": True,
-            "vector_tools": True,
-            "freehand_tools": True,
             "clipboard_paste": True,
-            "platform_assets": True,
             "upload_image": True,
             "upload_advanced": True,
             "save_assets": True,
-            "history_assets": True,
+            "ai_generate_asset": True,
+            "ai_generate_page": True,
+            "smart_scan": True,
             "browse_marketplace": True,
             "purchase_marketplace": True,
-            "publish_marketplace": True,
-            "ai_features": True,
-            "priority_support": True,
-            "api_access": True,
+            "publish_paid": True,
+            "publish_free": True,
+            "member_management": True,
+            "trash_recovery": True,
+            "project_templates": True,
+            "share_public_link": True,
+            "can_purchase_credits": True,
         }
     },
 }

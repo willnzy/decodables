@@ -181,7 +181,7 @@ class AccessControl:
         """
         Check if user can use OCR/Smart Scan feature.
 
-        DEPRECATED: Use TierService.can_use_feature(tier, FeatureKey.AI_FEATURES, is_trial) instead.
+        DEPRECATED: Use TierService.can_use_feature(tier, FeatureKey.SMART_SCAN, is_trial) instead.
 
         Business Rule: OCR is available to:
         - Pro/Enterprise tier users

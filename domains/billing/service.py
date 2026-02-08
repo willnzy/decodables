@@ -348,11 +348,10 @@ class BillingService:
         )
 
     def _operation_to_tx_type(self, operation: str) -> TransactionType:
-        """Map operation name to transaction type."""
-        mapping = {
-            "image_generation": TransactionType.AI_GENERATION,
-            "text_generation": TransactionType.AI_GENERATION,
-            "smart_scan": TransactionType.SMART_SCAN,
-            "ocr": TransactionType.SMART_SCAN,
-        }
-        return mapping.get(operation, TransactionType.AI_GENERATION)
+        """Map operation name to transaction type.
+
+        Phase 2: All consumption operations map to CREDIT_CONSUME.
+        The specific feature name is recorded in the description field.
+        """
+        # All operations are now CREDIT_CONSUME — feature name is in description
+        return TransactionType.CREDIT_CONSUME

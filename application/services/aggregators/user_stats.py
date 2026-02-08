@@ -186,7 +186,7 @@ def aggregate_tier_conversion():
     
     # Get credit transactions that indicate tier upgrades
     upgrades = supabase.table("credit_transactions").select("user_id, type")\
-        .eq("type", "sub_grant")\
+        .eq("type", "subscription_grant")\  # Phase 2: sub_grant → subscription_grant
         .gte("created_at", (now - timedelta(days=30)).isoformat()).execute()
     
     upgrade_users = set(u["user_id"] for u in (upgrades.data or []))

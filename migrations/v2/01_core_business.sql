@@ -1084,38 +1084,40 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
     -- 至少一个必须有值，两个都有值时必须相同
     -- ALTER-009 Phase 1 宽松版: 同时允许旧名(16) + 新名(19) = 29 种合集
     -- Phase 2 代码对齐后收紧为仅 19 种 TARGET 名称
-    -- [CURRENT 保留] subscription_grant, admin_adjustment, monthly_reset, marketplace_purchase, monthly_credits_cleared, refund_reversal
-    -- [CURRENT → Phase 2 删除] purchase, ai_generation, smart_scan, refund, signup_bonus, referral_bonus, campaign_reward, expiration, topup_purchase, sub_grant
-    -- [TARGET 新增] credit_purchase, credit_consume, bonus_signup_grant, bonus_referral_grant, bonus_campaign_grant, compensation_grant, promotion_grant, marketplace_earning, manual_correction, credits_expired, chargeback_reversal, subscription_upgrade, subscription_downgrade
+    -- Phase 2 ALTER-009 收紧: 仅允许 19 种 TARGET 类型 (见 SPEC §5 ENUM-002)
+    -- 增加 (+10): subscription_grant, credit_purchase, bonus_signup_grant, bonus_referral_grant, bonus_campaign_grant,
+    --             compensation_grant, promotion_grant, marketplace_earning, admin_adjustment, manual_correction
+    -- 减少 (-6):  credit_consume, marketplace_purchase, credits_expired, monthly_credits_cleared, refund_reversal, chargeback_reversal
+    -- 重置 (=3):  monthly_reset, subscription_upgrade, subscription_downgrade
     transaction_type TEXT CHECK (transaction_type IN (
-        -- [CURRENT] 旧名 (Phase 2 后移除)
-        'purchase', 'ai_generation', 'smart_scan', 'refund',
-        'signup_bonus', 'referral_bonus', 'campaign_reward',
-        'expiration', 'topup_purchase', 'sub_grant',
-        -- [CURRENT+TARGET] 保留名 (新旧通用)
-        'subscription_grant', 'admin_adjustment', 'monthly_reset',
-        'marketplace_purchase', 'monthly_credits_cleared', 'refund_reversal',
-        -- [TARGET] 新名 (Phase 2 开始使用)
-        'credit_purchase', 'credit_consume',
+        -- 增加 (+amount) — 10 types
+        'subscription_grant', 'credit_purchase',
         'bonus_signup_grant', 'bonus_referral_grant', 'bonus_campaign_grant',
         'compensation_grant', 'promotion_grant', 'marketplace_earning',
-        'manual_correction', 'credits_expired', 'chargeback_reversal',
-        'subscription_upgrade', 'subscription_downgrade'
+        'admin_adjustment', 'manual_correction',
+        -- 减少 (-amount) — 6 types
+        'credit_consume', 'marketplace_purchase',
+        'credits_expired', 'monthly_credits_cleared',
+        'refund_reversal', 'chargeback_reversal',
+        -- 重置/调整 (=) — 3 types
+        'monthly_reset', 'subscription_upgrade', 'subscription_downgrade'
     )),
     -- ⚠️ DEPRECATED: tx_type 已废弃，新代码请使用 transaction_type
-    -- 保留仅为向后兼容，触发器自动同步值
+    -- 保留仅为向后兼容，触发器自动同步值; 仍允许旧值 (已有数据兼容)
     tx_type TEXT CHECK (tx_type IN (
-        -- 同 transaction_type 宽松版 (ALTER-009 Phase 1)
-        'purchase', 'ai_generation', 'smart_scan', 'refund',
-        'signup_bonus', 'referral_bonus', 'campaign_reward',
-        'expiration', 'topup_purchase', 'sub_grant',
-        'subscription_grant', 'admin_adjustment', 'monthly_reset',
-        'marketplace_purchase', 'monthly_credits_cleared', 'refund_reversal',
-        'credit_purchase', 'credit_consume',
+        -- TARGET 19 types (same as transaction_type)
+        'subscription_grant', 'credit_purchase',
         'bonus_signup_grant', 'bonus_referral_grant', 'bonus_campaign_grant',
         'compensation_grant', 'promotion_grant', 'marketplace_earning',
-        'manual_correction', 'credits_expired', 'chargeback_reversal',
-        'subscription_upgrade', 'subscription_downgrade'
+        'admin_adjustment', 'manual_correction',
+        'credit_consume', 'marketplace_purchase',
+        'credits_expired', 'monthly_credits_cleared',
+        'refund_reversal', 'chargeback_reversal',
+        'monthly_reset', 'subscription_upgrade', 'subscription_downgrade',
+        -- LEGACY (旧数据兼容, 新代码不使用)
+        'purchase', 'ai_generation', 'smart_scan', 'refund',
+        'signup_bonus', 'referral_bonus', 'campaign_reward',
+        'expiration', 'topup_purchase', 'sub_grant'
     )),
 
     bucket TEXT NOT NULL CHECK (bucket IN ('monthly', 'permanent')),

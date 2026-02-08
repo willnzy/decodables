@@ -578,7 +578,7 @@ class SupabaseCreditRepository(ICreditRepository):
         user_id: str,
         amount: int,
         description: str,
-        tx_type: str = "topup_purchase",
+        tx_type: str = "credit_purchase",  # Phase 2: topup_purchase → credit_purchase
         tz: str = "UTC"
     ) -> Optional[dict]:
         """
@@ -614,7 +614,7 @@ class SupabaseCreditRepository(ICreditRepository):
         user_id: str,
         amount: int,
         description: str,
-        tx_type: str = "sub_grant",
+        tx_type: str = "subscription_grant",  # Phase 2: sub_grant → subscription_grant
         tz: str = "UTC"
     ) -> Optional[dict]:
         """
@@ -649,7 +649,7 @@ class SupabaseCreditRepository(ICreditRepository):
         user_id: str,
         amount: int,
         description: str,
-        tx_type: str = "purchase",
+        tx_type: str = "credit_purchase",  # Phase 2: purchase → credit_purchase
         tz: str = "UTC"
     ) -> Optional[dict]:
         """

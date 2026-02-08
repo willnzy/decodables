@@ -414,9 +414,9 @@ class ToolsService:
         """
         if self._tier_service:
             from domains.identity.tier_service import FeatureKey
-            # Smart Scan uses AI_FEATURES permission
+            # Phase 2 BUG-004: Smart Scan now has its own dedicated FeatureKey
             return await self._tier_service.can_use_feature(
-                tier, FeatureKey.AI_FEATURES, is_trial_active
+                tier, FeatureKey.SMART_SCAN, is_trial_active
             )
 
         # Fallback: t3/t4 always allowed, t1 only during trial

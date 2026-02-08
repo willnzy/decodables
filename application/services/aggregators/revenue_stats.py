@@ -81,7 +81,7 @@ def aggregate_subscription_events():
         
         for tx in txs.data or []:
             tx_type = tx.get("type", "").lower()
-            if "upgrade" in tx_type or tx_type == "sub_grant":
+            if "upgrade" in tx_type or tx_type in ("sub_grant", "subscription_grant"):  # Phase 2: support both old+new
                 events_data["upgrades"] += 1
             elif "downgrade" in tx_type:
                 events_data["downgrades"] += 1
