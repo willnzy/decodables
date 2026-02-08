@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Make Decodables - Supabase Storage 增量备份脚本
+Foliaz - Supabase Storage 增量备份脚本
 每天运行一次，增量备份到 Cloudflare R2 md-storage bucket
 
 功能：
@@ -324,7 +324,7 @@ def sync_bucket(
 # ============ 主流程 ============
 
 def main():
-    parser = argparse.ArgumentParser(description='Make Decodables Storage 增量备份')
+    parser = argparse.ArgumentParser(description='Foliaz Storage 增量备份')
     parser.add_argument('--dry-run', action='store_true', help='模拟运行，不实际执行')
     parser.add_argument('--verbose', action='store_true', help='详细输出')
     args = parser.parse_args()
@@ -335,7 +335,7 @@ def main():
     start_time = datetime.now(timezone.utc)
     
     logger.info("=" * 50)
-    logger.info("Make Decodables Storage 增量备份开始")
+    logger.info("Foliaz Storage 增量备份开始")
     logger.info("=" * 50)
     
     if args.dry_run:

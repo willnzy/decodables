@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Make Decodables - 本地测试运行器 (Python 版本)
+Foliaz - 本地测试运行器 (Python 版本)
 
 用法:
     python scripts/run_tests.py              # 运行所有测试
@@ -89,7 +89,7 @@ def print_header():
     print(f"""
 {Colors.BLUE}===========================================
 
- Make Decodables - Test Runner
+ Foliaz - Test Runner
 
 ==========================================={Colors.NC}
 """)

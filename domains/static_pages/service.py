@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 EMERGENCY_FALLBACK = {
     "site": {
-        "name": "Make Decodables",
+        "name": "Foliaz",
         "email": "info@foliaz.com",
         "whatsapp": "+1 (555) 123-4567",
         "privacy_updated": "January 2026",

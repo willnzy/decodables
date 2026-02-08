@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Prompt Templates
 # ==========================================
 
-THEME_GENERATION_PROMPT = """You are a theme designer for Make Decodables, a platform that helps teachers create decodable books for children.
+THEME_GENERATION_PROMPT = """You are a theme designer for Foliaz, a platform that helps teachers create decodable books for children.
 
 Today's date for theme design: {date} ({weekday})
 
@@ -34,7 +34,7 @@ Alternative A should be the MOST recommended, based on:
 1. **Education Relevance** (40%): Connection to education, children, reading, learning
 2. **Visual Appeal** (30%): Child-friendly, engaging design potential
 3. **Holiday Importance** (20%): Global recognition of the day/event
-4. **Brand Fit** (10%): Alignment with Make Decodables brand tone
+4. **Brand Fit** (10%): Alignment with Foliaz brand tone
 
 ## Output Format
 

@@ -203,9 +203,9 @@ def main():
 
     # 写入文件
     output_files = [
-        (tables, output_dir / 'schema_tables.sql', 'Make Decodables - 表结构定义'),
-        (indexes_functions, output_dir / 'schema_indexes_functions.sql', 'Make Decodables - 索引和函数'),
-        (data, output_dir / 'schema_data.sql', 'Make Decodables - 初始数据'),
+        (tables, output_dir / 'schema_tables.sql', 'Foliaz - 表结构定义'),
+        (indexes_functions, output_dir / 'schema_indexes_functions.sql', 'Foliaz - 索引和函数'),
+        (data, output_dir / 'schema_data.sql', 'Foliaz - 初始数据'),
     ]
 
     print(f"\n✍️  写入文件:")

@@ -42,7 +42,7 @@ class EmailService:
         resend_api_key: str,
         from_email: str,
         frontend_url: str,
-        app_name: str = "Make Decodables",
+        app_name: str = "Foliaz",
     ) -> None:
         """
         Initialize EmailService.

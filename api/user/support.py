@@ -317,7 +317,7 @@ async def contact(
     """
     Submit contact form for general inquiries or business requests.
 
-    Allows users to send messages to the Make Decodables team for inquiries,
+    Allows users to send messages to the Foliaz team for inquiries,
     partnerships, feature requests, or other non-support related communication.
     Messages are sent via email and stored in the database for tracking.
 
@@ -358,7 +358,7 @@ async def contact(
             "name": "John Doe",
             "email": "john.doe@school.edu",
             "subject": "Educational Partnership Inquiry",
-            "message": "I'm interested in using Make Decodables for my classroom of 30 students. Do you offer educational discounts?"
+            "message": "I'm interested in using Foliaz for my classroom of 30 students. Do you offer educational discounts?"
         }
 
         Response:
@@ -394,7 +394,7 @@ async def feedback(
     Submit user feedback for product improvement.
 
     Allows users to share feedback, suggestions, bug reports, or feature requests
-    to help improve the Make Decodables platform. Feedback is stored in the database
+    to help improve the Foliaz platform. Feedback is stored in the database
     and reviewed by the product team. Supports image attachments for visual feedback.
 
     v3.0.0: Uses SubmitFeedbackHandler (CQRS Command pattern).

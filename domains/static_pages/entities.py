@@ -65,7 +65,7 @@ class StaticPage:
 
     def get_effective_meta_title(self) -> str:
         """Get SEO title, falling back to page title."""
-        return self.meta_title or f"{self.title} | Make Decodables"
+        return self.meta_title or f"{self.title} | Foliaz"
 
     def get_effective_meta_description(self) -> str:
         """Get SEO description, falling back to subtitle."""

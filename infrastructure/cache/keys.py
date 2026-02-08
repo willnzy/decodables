@@ -2,7 +2,7 @@
 Cache Keys Module - Business-specific cache key definitions.
 
 Naming Convention:
-- All keys start with "md:" prefix (Make Decodables)
+- All keys start with "md:" prefix (Foliaz)
 - Followed by namespace (config, experiment, ai, rl, stats)
 - Then specific identifier
 

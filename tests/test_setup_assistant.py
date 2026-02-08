@@ -16,17 +16,17 @@ class TestSetupAssistantConfig:
     def test_assistant_name_defined(self):
         """Assistant name is defined"""
         from application.services.setup_assistant import ASSISTANT_NAME
-        assert ASSISTANT_NAME == "Make Decodables Support Assistant"
+        assert ASSISTANT_NAME == "Foliaz Support Assistant"
     
     def test_vector_store_name_defined(self):
         """Vector store name is defined"""
         from application.services.setup_assistant import VECTOR_STORE_NAME
-        assert VECTOR_STORE_NAME == "Make Decodables Knowledge Base"
+        assert VECTOR_STORE_NAME == "Foliaz Knowledge Base"
     
     def test_assistant_instructions_defined(self):
         """Assistant instructions are defined"""
         from application.services.setup_assistant import ASSISTANT_INSTRUCTIONS
-        assert "Make Decodables" in ASSISTANT_INSTRUCTIONS
+        assert "Foliaz" in ASSISTANT_INSTRUCTIONS
         assert "customer support" in ASSISTANT_INSTRUCTIONS.lower()
     
     def test_knowledge_base_path_defined(self):
@@ -242,7 +242,7 @@ class TestAssistantInstructions:
     def test_instructions_include_product_name(self):
         """Instructions mention product name"""
         from application.services.setup_assistant import ASSISTANT_INSTRUCTIONS
-        assert "Make Decodables" in ASSISTANT_INSTRUCTIONS
+        assert "Foliaz" in ASSISTANT_INSTRUCTIONS
     
     def test_instructions_include_support_channels(self):
         """Instructions include support channels"""

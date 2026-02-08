@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Make Decodables - 数据库备份脚本 (简化版)
+Foliaz - 数据库备份脚本 (简化版)
 每天运行一次，备份到 Cloudflare R2
 
 Usage:
@@ -265,7 +265,7 @@ def calculate_checksum(file_path: Path) -> str:
 # ============ 主流程 ============
 
 def main():
-    parser = argparse.ArgumentParser(description='Make Decodables 数据库备份')
+    parser = argparse.ArgumentParser(description='Foliaz 数据库备份')
     parser.add_argument('--dry-run', action='store_true', help='模拟运行，不实际执行')
     parser.add_argument('--verbose', action='store_true', help='详细输出')
     args = parser.parse_args()
@@ -277,7 +277,7 @@ def main():
     timestamp = start_time.strftime('%Y%m%d_%H%M%S')
     
     logger.info("=" * 50)
-    logger.info("Make Decodables 数据库备份开始")
+    logger.info("Foliaz 数据库备份开始")
     logger.info("=" * 50)
     
     if args.dry_run:

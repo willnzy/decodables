@@ -26,15 +26,15 @@ load_dotenv()
 from openai import OpenAI
 
 # Configuration
-ASSISTANT_NAME = "Make Decodables Support Assistant"
+ASSISTANT_NAME = "Foliaz Support Assistant"
 KNOWLEDGE_BASE_PATH = os.path.join(os.path.dirname(__file__), "knowledge_base.md")
-VECTOR_STORE_NAME = "Make Decodables Knowledge Base"
+VECTOR_STORE_NAME = "Foliaz Knowledge Base"
 
 # Assistant instructions (system prompt)
-ASSISTANT_INSTRUCTIONS = """You are a friendly and helpful customer support assistant for Make Decodables.
+ASSISTANT_INSTRUCTIONS = """You are a friendly and helpful customer support assistant for Foliaz.
 
 Your role is to:
-1. Answer questions about Make Decodables product features, pricing, and usage
+1. Answer questions about Foliaz product features, pricing, and usage
 2. Help users troubleshoot common issues
 3. Guide users on how to use different features
 4. Be concise, friendly, and professional
@@ -44,7 +44,7 @@ Important guidelines:
 - If you're not sure about something, suggest the user contact human support via WhatsApp (+1 725 290 0525) or email (info@foliaz.com)
 - Always be encouraging and positive
 - Use simple language suitable for teachers and parents
-- If a question is outside the scope of Make Decodables, politely redirect
+- If a question is outside the scope of Foliaz, politely redirect
 - When answering, reference the knowledge base but don't quote it verbatim
 - If user uploads an image, describe what you see and help with their question
 
@@ -60,7 +60,7 @@ def main():
     
     client = OpenAI(api_key=api_key)
     
-    print("🚀 Setting up Make Decodables Support Assistant...")
+    print("🚀 Setting up Foliaz Support Assistant...")
     print()
     
     # Step 1: Upload knowledge base file

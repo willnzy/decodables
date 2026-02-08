@@ -27,7 +27,7 @@ def email_service() -> EmailService:
         resend_api_key="re_test_key",
         from_email="noreply@foliaz.com",
         frontend_url="https://foliaz.com",
-        app_name="Make Decodables",
+        app_name="Foliaz",
     )
 
 
