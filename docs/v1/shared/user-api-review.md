@@ -1788,7 +1788,7 @@
   },
   "globals": {
     "company_name": "Make Decodables",
-    "company_email": "info@makedecodables.com",
+    "company_email": "info@foliaz.com",
     "company_whatsapp": "+1 (725) 290 0525"
   },
   "lastUpdated": "2026-01-12T10:00:00Z"

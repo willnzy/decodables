@@ -668,7 +668,7 @@ Articles 系统处理**长内容** (文章、文档)，而 Config 系统处理**
 | 新闻公告 | Articles (`news`) | "New Feature: AI Design" |
 | 更新日志 | Articles (`changelog`) | "v2.0.0 Release Notes" |
 | Landing 页面标题 | Config (`LANDING_HERO_TITLE`) | "Create Beautiful 8-Page Zines" |
-| 联系邮箱 | Config (`CONTACT_EMAIL`) | "info@makedecodables.com" |
+| 联系邮箱 | Config (`CONTACT_EMAIL`) | "info@foliaz.com" |
 | 价格信息 | Config (`PRICING_*`) | 功能列表、价格档位 |
 
 ---

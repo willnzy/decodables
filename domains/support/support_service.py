@@ -321,7 +321,7 @@ class SupportService:
             logger.error(f"Chat error: {e}")
             return {
                 "status": "error",
-                "message": "I'm having trouble right now. Please try again or contact us at info@makedecodables.com",
+                "message": "I'm having trouble right now. Please try again or contact us at info@foliaz.com",
                 "error": str(e),
             }
 

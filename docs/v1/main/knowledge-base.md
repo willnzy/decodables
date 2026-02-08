@@ -167,7 +167,7 @@ All credit packs are one-time purchases and credits never expire.
 
 ## Contact Information
 
-- **Email:** info@makedecodables.com
+- **Email:** info@foliaz.com
 - **WhatsApp:** +1 (725) 290 0525
 - **Website:** https://makedecodables.com
 - **Contact page:** https://makedecodables.com/contact-us

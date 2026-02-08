@@ -104,7 +104,7 @@ PAGE_{PAGE_NAME}_{SECTION}_{FIELD}
 | Key | Value | 用途 |
 |-----|-------|------|
 | `GLOBAL_COMPANY_NAME` | "Make Decodables" | 公司名称 |
-| `GLOBAL_COMPANY_EMAIL` | "info@makedecodables.com" | 公司邮箱 |
+| `GLOBAL_COMPANY_EMAIL` | "info@foliaz.com" | 公司邮箱 |
 | `GLOBAL_COMPANY_WHATSAPP` | "+1 (725) 290 0525" | WhatsApp |
 | `GLOBAL_COMPANY_ADDRESS` | "..." | 公司地址 |
 | `GLOBAL_SUPPORT_EMAIL` | "support@makedecodables.com" | 客服邮箱 |
@@ -120,7 +120,7 @@ PAGE_{PAGE_NAME}_{SECTION}_{FIELD}
 
 **渲染结果**:
 ```
-如有疑问，请通过 info@makedecodables.com 联系我们，
+如有疑问，请通过 info@foliaz.com 联系我们，
 或拨打 WhatsApp: +1 (725) 290 0525。
 ```
 
@@ -274,7 +274,7 @@ interface CTAConfig {
   },
   "globals": {
     "company_name": "Make Decodables",
-    "company_email": "info@makedecodables.com",
+    "company_email": "info@foliaz.com",
     "company_whatsapp": "+1 (725) 290 0525"
   },
   "lastUpdated": "2026-01-12T10:00:00Z"
@@ -556,7 +556,7 @@ async def get_page_content(
 ├─────────────────────────────────────────────────────────────────┤
 │ Available Variables:                                             │
 │ {{GLOBAL_COMPANY_NAME}} → Make Decodables                       │
-│ {{GLOBAL_COMPANY_EMAIL}} → info@makedecodables.com              │
+│ {{GLOBAL_COMPANY_EMAIL}} → info@foliaz.com              │
 │ {{GLOBAL_COMPANY_WHATSAPP}} → +1 (725) 290 0525                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -570,7 +570,7 @@ async def get_page_content(
 │ Variable Name              │ Value                   │ Action   │
 │ ─────────────────────────────────────────────────────────────── │
 │ GLOBAL_COMPANY_NAME        │ Make Decodables         │ [Edit]   │
-│ GLOBAL_COMPANY_EMAIL       │ info@makedecodables.com │ [Edit]   │
+│ GLOBAL_COMPANY_EMAIL       │ info@foliaz.com │ [Edit]   │
 │ GLOBAL_COMPANY_WHATSAPP    │ +1 (725) 290 0525       │ [Edit]   │
 │ GLOBAL_SUPPORT_EMAIL       │ support@makedecodables..│ [Edit]   │
 │ GLOBAL_LAST_UPDATED_PRIVACY│ January 3, 2025         │ [Edit]   │
@@ -611,7 +611,7 @@ async def get_page_content(
 -- 初始化全局变量
 INSERT INTO system_configs (key, value, category, description, is_public) VALUES
 ('GLOBAL_COMPANY_NAME', '"Make Decodables"', 'global', 'Company name', true),
-('GLOBAL_COMPANY_EMAIL', '"info@makedecodables.com"', 'global', 'Contact email', true),
+('GLOBAL_COMPANY_EMAIL', '"info@foliaz.com"', 'global', 'Contact email', true),
 ('GLOBAL_COMPANY_WHATSAPP', '"+1 (725) 290 0525"', 'global', 'WhatsApp number', true),
 ('GLOBAL_SUPPORT_EMAIL', '"support@makedecodables.com"', 'global', 'Support email', true),
 ('GLOBAL_COMPANY_ADDRESS', '"..."', 'global', 'Company address', true),
