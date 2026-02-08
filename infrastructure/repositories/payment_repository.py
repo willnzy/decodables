@@ -141,6 +141,26 @@ class SupabasePaymentRepository:
         }
 
     @retry_on_network_error()
+    async def get_by_id(
+        self,
+        payment_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get payment by payment record ID.
+
+        Args:
+            payment_id: Payment record ID
+
+        Returns:
+            Payment record or None
+        """
+        result = await self.client.table("payment_records").select("*").eq(
+            "id", payment_id
+        ).execute()
+
+        return result.data[0] if result.data else None
+
+    @retry_on_network_error()
     async def get_by_stripe_id(
         self,
         stripe_payment_intent_id: str

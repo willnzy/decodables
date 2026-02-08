@@ -127,6 +127,23 @@ class SubscriptionStatus(str, Enum):
     INACTIVE = "inactive"
 
 
+class TrialStatus(str, Enum):
+    """Trial lifecycle status (ENUM-005 Phase 5)."""
+    NOT_STARTED = "not_started"
+    ACTIVE = "active"
+    EXPIRED = "expired"
+    EXTENDED = "extended"
+
+
+class DowngradeReason(str, Enum):
+    """Reason for tier downgrade (ENUM-009 Phase 5)."""
+    COST_REDUCTION = "cost_reduction"
+    FEATURE_UNUSED = "feature_unused"
+    TRIAL_EXPIRATION = "trial_expiration"
+    ADMIN_REQUEST = "admin_request"
+    ACCOUNT_RECOVERY = "account_recovery"
+
+
 @dataclass(frozen=True)
 class UserId:
     """

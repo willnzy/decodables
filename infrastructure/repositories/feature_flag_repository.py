@@ -57,7 +57,9 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
     async def get_by_key(self, key: str) -> Optional[FeatureFlag]:
         """Get feature flag by key."""
         try:
-            result = await self.client.table("feature_flags").select("*").eq(
+            result = await self.client.table("feature_flags").select(
+                "*, rollout_percentage"
+            ).eq(
                 "key", key
             ).single().execute()
 
@@ -132,7 +134,9 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
     ) -> List[FeatureFlag]:
         """Get all feature flags."""
         try:
-            query = self.client.table("feature_flags").select("*").order("key")
+            query = self.client.table("feature_flags").select(
+                "*, rollout_percentage"
+            ).order("key")
 
             if status:
                 query = query.eq("status", status.value)
@@ -150,7 +154,9 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
     async def get_active(self) -> List[FeatureFlag]:
         """Get all active feature flags."""
         try:
-            result = await self.client.table("feature_flags").select("*").in_(
+            result = await self.client.table("feature_flags").select(
+                "*, rollout_percentage"
+            ).in_(
                 "status", [FlagStatus.ACTIVE.value, FlagStatus.DEPRECATED.value]
             ).order("key").execute()
 
@@ -183,7 +189,7 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
             )
             targeting_rules.append(rule)
 
-        return FeatureFlag(
+        flag = FeatureFlag(
             key=row["key"],
             name=row.get("name", row["key"]),
             description=row.get("description"),
@@ -198,6 +204,12 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
                 if row.get("updated_at") else datetime.now(timezone.utc),
         )
 
+        # REPO-002: Add rollout_percentage support
+        if "rollout_percentage" in row:
+            flag.rollout_percentage = row.get("rollout_percentage", 0)
+
+        return flag
+
     def _map_to_row(self, flag: FeatureFlag) -> dict:
         """Map FeatureFlag to database row."""
         return {
@@ -209,4 +221,5 @@ class SupabaseFeatureFlagRepository(IFeatureFlagRepository):
             "targeting_rules": json.dumps([r.to_dict() for r in flag.targeting_rules]),
             "tags": flag.tags,
             "created_by": flag.created_by,
+            "rollout_percentage": getattr(flag, "rollout_percentage", 0),
         }

@@ -71,7 +71,8 @@ TIER_MONTHLY_PRICES = {
 
 # Signup bonus credits (FALLBACK only — use tier_service.get_signup_bonus())
 # Authoritative source: database system_configs table
-SIGNUP_BONUS_CREDITS = 100
+# GAP-009: Value must match seed config in 01_core_business.sql (50 credits)
+SIGNUP_BONUS_CREDITS = 50
 
 # Trial period configuration (can be overridden via system_configs)
 DEFAULT_TRIAL_DURATION_DAYS = 30  # Free tier users get 30-day trial with full access

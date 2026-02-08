@@ -267,6 +267,46 @@ async def get_portal(
         raise HTTPException(500, "Failed to access billing portal. Please try again.")
 
 
+@router.get("/status/{payment_id}")
+async def get_payment_status(
+    payment_id: str,
+    user: UserProfile = Depends(get_current_user),
+) -> dict:
+    """
+    API-007 Phase 5: Get payment status by ID.
+
+    Returns payment record details for a specific payment.
+
+    Args:
+        payment_id: Payment record ID
+        user: Current authenticated user
+
+    Returns:
+        Payment record with status info or 404 if not found
+    """
+    try:
+        container = get_container()
+        payment_repo = await container.get_payment_repository()
+
+        # Query payment_records by ID
+        result = await payment_repo.get_by_id(payment_id)
+
+        if not result:
+            raise HTTPException(status_code=404, detail="Payment not found")
+
+        # Verify ownership: payment must belong to current user
+        if result.get("user_id") != user.user_id:
+            raise HTTPException(status_code=403, detail="Unauthorized")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[Payment] Error getting payment status {payment_id} for user {user.user_id}: {e}")
+        raise HTTPException(500, "Failed to get payment status. Please try again.")
+
+
 @router.post("/upgrade", response_model=UpgradeResponse)
 @limiter.limit("3/minute")
 async def upgrade_subscription(

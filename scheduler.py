@@ -432,10 +432,79 @@ def run_credit_reconciliation():
             )
 
 
+def check_expired_trials():
+    """
+    SCHEDULER-002 / GAP-005: Check and expire overdue trials.
+
+    Queries profiles where is_trial_active = TRUE and trial_end_date < NOW(),
+    then updates is_trial_active = FALSE for each expired trial user.
+
+    Schedule: Daily 1:00 AM UTC.
+
+    WS-19: Uses _run_async_with_timeout for timeout protection.
+    """
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 📋 Starting trial expiration check...")
+
+    async def _async_check_expired_trials():
+        """Async wrapper with fresh AsyncClient"""
+        from core.database import create_task_async_client
+
+        db = await create_task_async_client()
+
+        try:
+            # Find expired trials: is_trial_active = TRUE AND trial_end_date < NOW()
+            result = await db.table("profiles").select(
+                "id, email, tier, trial_end_date"
+            ).eq(
+                "is_trial_active", True
+            ).lt(
+                "trial_end_date", datetime.now(timezone.utc).isoformat()
+            ).execute()
+
+            expired_users = result.data or []
+
+            if not expired_users:
+                logger.info("[trial_expiration] No expired trials found")
+                return {"expired_count": 0}
+
+            # Batch update: set is_trial_active = FALSE for each expired trial user
+            expired_count = 0
+            for user in expired_users:
+                user_id = user["id"]
+                try:
+                    await db.table("profiles").update({
+                        "is_trial_active": False,
+                        "updated_at": datetime.now(timezone.utc).isoformat()
+                    }).eq(
+                        "id", user_id
+                    ).execute()
+                    expired_count += 1
+                except Exception as e:
+                    logger.error(
+                        f"[trial_expiration] Failed to expire trial for user {user_id}: {e}"
+                    )
+
+            return {"expired_count": expired_count}
+
+        finally:
+            if hasattr(db, 'aclose'):
+                await db.aclose()
+                logger.info("[DB] Trial expiration async client closed")
+
+    # WS-19: Use timeout wrapper
+    result = _run_async_with_timeout(_async_check_expired_trials, "check_expired_trials", timeout=120)
+    if result:
+        expired_count = result.get("expired_count", 0)
+        logger.info(
+            f"[{datetime.now(timezone.utc).isoformat()}] ✅ Trial expiration check complete: "
+            f"Expired {expired_count} trials"
+        )
+
+
 def init_scheduler():
     """
     Initialize and start the scheduler
-     FastAPI 
+     FastAPI
     """
     # Only run scheduler in production or if explicitly enabled
     enable_scheduler = os.environ.get("ENABLE_SCHEDULER", "true").lower() == "true"
@@ -516,10 +585,20 @@ def init_scheduler():
         misfire_grace_time=3600  # 1 hour grace period
     )
 
+    # SCHEDULER-002 / GAP-005: Trial expiration check - run at 1:00 AM UTC daily
+    scheduler.add_job(
+        check_expired_trials,
+        CronTrigger(hour=1, minute=0),  # 1:00 AM UTC
+        id="check_expired_trials",
+        replace_existing=True,
+        misfire_grace_time=3600  # 1 hour grace period
+    )
+
     # Start the scheduler
     scheduler.start()
     logger.info("📅 Scheduler started with jobs:")
     logger.info("   - Hourly aggregation: every hour at :05")
+    logger.info("   - Trial expiration check: 1:00 AM UTC (SCHEDULER-002 / GAP-005)")
     logger.info("   - Daily aggregation: 2:00 AM UTC")
     logger.info("   - Storage cleanup: 3:00 AM UTC (v3.18)")
     logger.info("   - Daily maintenance: 4:00 AM UTC (v3.30)")

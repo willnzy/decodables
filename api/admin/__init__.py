@@ -52,6 +52,7 @@ from .themes import router as themes_router
 from .user_creation_monitoring import router as user_creation_monitoring_router
 from .static_pages import router as static_pages_router
 from .tiers import router as tiers_router
+from .overrides import router as overrides_router
 
 # Create admin API router
 admin_router = APIRouter(prefix="/api/v2/admin", tags=["admin-v2"])
@@ -80,5 +81,6 @@ admin_router.include_router(themes_router)
 admin_router.include_router(user_creation_monitoring_router)
 admin_router.include_router(static_pages_router)
 admin_router.include_router(tiers_router)
+admin_router.include_router(overrides_router)
 
 __all__ = ['admin_router']
