@@ -1676,6 +1676,21 @@ COMMENT ON TABLE workspace_feature_override_logs IS 'Workspace 权限覆盖审�
 
 -- [DELETED] credit_pools RLS — 表已删除，对应 RLS 一并移除 (2026-02-08)
 
+-- user_feature_override_logs RLS (审计日志仅 service_role)
+ALTER TABLE user_feature_override_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY user_feature_override_logs_service_all ON user_feature_override_logs
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- group_feature_override_logs RLS (审计日志仅 service_role)
+ALTER TABLE group_feature_override_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY group_feature_override_logs_service_all ON group_feature_override_logs
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+-- workspace_feature_override_logs RLS (审计日志仅 service_role)
+ALTER TABLE workspace_feature_override_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY workspace_feature_override_logs_service_all ON workspace_feature_override_logs
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 -- user_feature_overrides RLS
 ALTER TABLE user_feature_overrides ENABLE ROW LEVEL SECURITY;
 

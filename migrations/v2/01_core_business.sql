@@ -4202,6 +4202,13 @@ CREATE TABLE IF NOT EXISTS free_quota_usage (
 CREATE INDEX IF NOT EXISTS idx_fqu_user_period
     ON free_quota_usage(user_id, period_start);
 
+-- free_quota_usage RLS (用户可读自己的配额，service_role 全权)
+ALTER TABLE free_quota_usage ENABLE ROW LEVEL SECURITY;
+CREATE POLICY free_quota_usage_user_select ON free_quota_usage
+    FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY free_quota_usage_service_all ON free_quota_usage
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
 -- ----------------------------------------------------------------------------
 -- reconciliation_results (积分对账审计)
 -- 每日/手动对账任务的结果记录, 用于发现 credits_monthly + credits_permanent 与
