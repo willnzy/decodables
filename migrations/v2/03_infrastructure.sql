@@ -1040,6 +1040,11 @@ DECLARE
     v_version TEXT;
     v_resource_type TEXT;
     v_resource_id UUID;
+    v_seller_id UUID;                -- GAP-003: seller user_id
+    v_seller_ratio NUMERIC;          -- GAP-003: seller revenue ratio
+    v_seller_earning INT;            -- GAP-003: seller earning amount
+    v_seller_deduct_success BOOLEAN; -- GAP-003: add_credits result
+    v_seller_error TEXT;             -- GAP-003: add_credits error
 BEGIN
     -- §22 RPC Safety: lock_timeout + statement_timeout
     SET LOCAL lock_timeout = '5s';
@@ -1061,9 +1066,9 @@ BEGIN
         RETURN;
     END IF;
 
-    -- 获取 listing 信息
-    SELECT price_credits, title, thumbnail_url, description, version, resource_type, resource_id
-    INTO v_price, v_title, v_thumbnail, v_description, v_version, v_resource_type, v_resource_id
+    -- 获取 listing 信息 (GAP-003: +user_id as seller_id)
+    SELECT price_credits, title, thumbnail_url, description, version, resource_type, resource_id, user_id
+    INTO v_price, v_title, v_thumbnail, v_description, v_version, v_resource_type, v_resource_id, v_seller_id
     FROM marketplace_listings
     WHERE id = p_listing_id AND is_public = TRUE AND is_deleted = FALSE
     FOR UPDATE;
@@ -1121,6 +1126,33 @@ BEGIN
         total_revenue = total_revenue + v_price,
         updated_at = CURRENT_TIMESTAMP
     WHERE id = p_listing_id;
+
+    -- GAP-003 Phase 4: 卖家积分入账 (seller ≠ buyer 时)
+    IF v_seller_id IS NOT NULL AND v_seller_id != p_user_id THEN
+        -- 读取分成比例 (默认 70%)
+        SELECT COALESCE(
+            (SELECT (value::NUMERIC) FROM system_configs
+             WHERE key = 'marketplace.seller_revenue_ratio' LIMIT 1),
+            0.70
+        ) INTO v_seller_ratio;
+
+        v_seller_earning := FLOOR(v_price * v_seller_ratio);
+
+        IF v_seller_earning > 0 THEN
+            SELECT success, error_message
+            INTO v_seller_deduct_success, v_seller_error
+            FROM add_credits_atomic(
+                v_seller_id,
+                v_seller_earning,
+                'marketplace_earning',
+                'Marketplace sale: ' || v_title,
+                'seller_' || COALESCE(p_idempotency_key, p_listing_id::TEXT || '_' || p_user_id::TEXT),
+                'listing',
+                p_listing_id::TEXT
+            );
+            -- 卖家入账失败不影响买家购买 (best-effort)
+        END IF;
+    END IF;
 
     RETURN QUERY SELECT TRUE, NULL::TEXT;
 END;

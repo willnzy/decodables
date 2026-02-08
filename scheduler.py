@@ -256,6 +256,56 @@ def run_webhook_retry():
             f"{total['processed']} processed, {total['failed']} failed, {total['skipped']} skipped"
         )
 
+def run_webhook_events_cleanup():
+    """
+    GAP-008 Phase 4: Clean up processed webhook events older than 90 days.
+
+    Schedule: Weekly Sunday 3:00 AM UTC.
+
+    Deletes stripe_webhook_events records that are:
+    - processed (processed_at IS NOT NULL)
+    - older than 90 days from current UTC time
+
+    This prevents unbounded growth of the webhook events table while
+    maintaining audit trail for recent events.
+    """
+    logger.info(f"[{datetime.now(timezone.utc).isoformat()}] 🧹 Starting webhook events cleanup...")
+
+    async def _async_webhook_cleanup():
+        """Async wrapper with fresh AsyncClient"""
+        from core.database import create_task_async_client
+        from datetime import timedelta
+
+        db = await create_task_async_client()
+        try:
+            # Calculate cutoff date (90 days ago)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=90)
+            cutoff_iso = cutoff_date.isoformat()
+
+            # Delete processed events older than 90 days
+            result = await db.table("stripe_webhook_events").delete().lt(
+                "processed_at", cutoff_iso
+            ).not_.is_("processed_at", "null").execute()
+
+            deleted_count = len(result.data) if result.data else 0
+            return {"deleted_count": deleted_count, "cutoff_date": cutoff_iso}
+
+        finally:
+            if hasattr(db, 'aclose'):
+                await db.aclose()
+                logger.info("[DB] Webhook cleanup async client closed")
+
+    # WS-19: Use timeout wrapper
+    result = _run_async_with_timeout(_async_webhook_cleanup, "webhook_events_cleanup")
+    if result:
+        deleted_count = result["deleted_count"]
+        cutoff_date = result["cutoff_date"]
+        logger.info(
+            f"[{datetime.now(timezone.utc).isoformat()}] ✅ Webhook events cleanup complete: "
+            f"Deleted {deleted_count} processed events older than 90 days (cutoff: {cutoff_date})"
+        )
+
+
 def run_credit_reconciliation():
     """
     Daily credit reconciliation task (WS7d, #38)
@@ -448,6 +498,15 @@ def init_scheduler():
         misfire_grace_time=3600  # 1 hour grace period
     )
 
+    # GAP-008 Phase 4: Webhook events cleanup - run every Sunday at 3:00 AM UTC
+    scheduler.add_job(
+        run_webhook_events_cleanup,
+        CronTrigger(day_of_week='sun', hour=3, minute=0),  # Sunday 3:00 AM UTC
+        id="webhook_events_cleanup",
+        replace_existing=True,
+        misfire_grace_time=3600  # 1 hour grace period
+    )
+
     # WS7d: Credit reconciliation task - run at 6:00 AM UTC daily
     scheduler.add_job(
         run_credit_reconciliation,
@@ -464,6 +523,7 @@ def init_scheduler():
     logger.info("   - Daily aggregation: 2:00 AM UTC")
     logger.info("   - Storage cleanup: 3:00 AM UTC (v3.18)")
     logger.info("   - Daily maintenance: 4:00 AM UTC (v3.30)")
+    logger.info("   - Webhook events cleanup: Sunday 3:00 AM UTC (GAP-008 Phase 4)")
     logger.info("   - Weekly maintenance: Sunday 5:00 AM UTC (v3.30)")
     logger.info("   - Webhook retry: every hour at :15 (P3-022)")
     logger.info("   - Credit reconciliation: 6:00 AM UTC (WS7d)")

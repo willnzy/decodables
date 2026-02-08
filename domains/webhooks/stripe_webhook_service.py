@@ -201,6 +201,9 @@ class StripeWebhookService:
         elif event_type == "charge.refunded":
             # P0-010 fix: Process refunds via webhook for transaction safety
             return await self._handle_charge_refunded(event)
+        elif event_type == "charge.dispute.created":
+            # WS8: Handle chargeback/dispute reversals
+            return await self._handle_charge_dispute_created(event)
         elif event_type == "customer.deleted":
             # WS7b (#45): GDPR — clear local stripe_customer_id
             return await self._handle_customer_deleted(event)
@@ -728,6 +731,24 @@ class StripeWebhookService:
             logger.error(f"[Webhook] Failed to terminate subscription for user {uid}: {e}")
             return {"status": "error", "error": "termination_failed", "user_id": uid}
 
+        # Record audit transaction in credit_transactions (0-amount)
+        try:
+            await self.db_client.table("credit_transactions").insert({
+                "user_id": uid,
+                "transaction_type": "subscription_canceled",
+                "amount": 0,
+                "reason": f"Subscription cancelled - {status}",
+                "metadata": {
+                    "subscription_id": subscription_id,
+                    "previous_tier": current_tier,
+                    "termination_status": status,
+                    "source": "stripe_webhook",
+                },
+            }).execute()
+            logger.info(f"[Webhook] Recorded subscription_canceled transaction for user {uid}")
+        except Exception as e:
+            logger.warning(f"[Webhook] Failed to record credit_transactions for subscription_canceled, user {uid}: {e}")
+
         # Log activity (non-critical)
         if self.activity_log_repo:
             await self.activity_log_repo.log_activity(
@@ -969,6 +990,110 @@ class StripeWebhookService:
             admin_id=admin_id,
             custom_reason=custom_reason,
         )
+
+    async def _handle_charge_dispute_created(self, event: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Handle charge.dispute.created webhook event (chargeback/dispute).
+
+        WS8: Processes disputes similar to refunds but uses 'chargeback_reversal'
+        transaction type for audit purposes.
+
+        Args:
+            event: Stripe charge.dispute.created webhook event
+
+        Returns:
+            Dict with status and processing details
+        """
+        dispute = event["data"]["object"]
+        dispute_id = dispute.get("id", "unknown")
+        charge_id = dispute.get("charge", "unknown")
+        amount_disputed = dispute.get("amount", 0)  # cents
+        currency = dispute.get("currency", "usd")
+        reason = dispute.get("reason", "unknown")
+
+        logger.info(
+            f"[Webhook] Processing charge.dispute.created: "
+            f"dispute_id={dispute_id}, charge={charge_id}, "
+            f"amount=${amount_disputed / 100:.2f} {currency}, reason={reason}"
+        )
+
+        # Look up the charge to get customer and metadata
+        try:
+            charge_res = await self.db_client.table("payment_records")\
+                .select("user_id, metadata")\
+                .eq("stripe_charge_id", charge_id)\
+                .execute()
+
+            if not charge_res.data:
+                logger.warning(f"[Webhook] No charge found for dispute {dispute_id}: charge={charge_id}")
+                return {"status": "error", "error": "charge_not_found", "dispute_id": dispute_id}
+
+            charge_record = charge_res.data[0]
+            user_id = charge_record.get("user_id")
+
+            if not user_id:
+                logger.error(f"[Webhook] Dispute {dispute_id} has no user_id in charge record")
+                return {"status": "error", "error": "missing_user_id", "dispute_id": dispute_id}
+
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to look up charge for dispute {dispute_id}: {e}")
+            return {"status": "error", "error": "lookup_failed", "dispute_id": dispute_id}
+
+        # Record the dispute/chargeback reversal in payment_records
+        try:
+            await self.payment_repo.create(
+                user_id=user_id,
+                stripe_payment_intent_id=charge_id,
+                amount_usd=amount_disputed / 100,
+                currency=currency.upper(),
+                status="disputed",
+                payment_type="chargeback",
+                metadata={
+                    "dispute_id": dispute_id,
+                    "dispute_reason": reason,
+                    "charge_id": charge_id,
+                    "source": "stripe_webhook",
+                },
+            )
+        except Exception as e:
+            logger.error(f"[Webhook] Failed to record dispute {dispute_id}: {e}")
+
+        # Record chargeback reversal in credit_transactions (0-amount audit)
+        try:
+            await self.db_client.table("credit_transactions").insert({
+                "user_id": user_id,
+                "transaction_type": "chargeback_reversal",
+                "amount": 0,
+                "reason": f"Chargeback disputed - {reason}",
+                "metadata": {
+                    "dispute_id": dispute_id,
+                    "charge_id": charge_id,
+                    "amount_disputed": amount_disputed / 100,
+                    "currency": currency,
+                    "source": "stripe_webhook",
+                },
+            }).execute()
+            logger.info(f"[Webhook] Recorded chargeback_reversal transaction for user {user_id}, dispute {dispute_id}")
+        except Exception as e:
+            logger.warning(f"[Webhook] Failed to record credit_transactions for chargeback_reversal, user {user_id}: {e}")
+
+        # Non-critical: activity logging
+        if self.activity_log_repo:
+            await self.activity_log_repo.log_activity(
+                user_id=user_id,
+                action="chargeback_received",
+                metadata={
+                    "dispute_id": dispute_id,
+                    "amount": amount_disputed / 100,
+                    "reason": reason,
+                },
+            )
+
+        return {
+            "status": "ok", "action": "dispute_recorded",
+            "dispute_id": dispute_id, "user_id": user_id,
+            "amount": amount_disputed / 100,
+        }
 
     async def _process_credit_refund(
         self,
@@ -1304,6 +1429,23 @@ class StripeWebhookService:
             )
         except Exception as e:
             logger.warning(f"[Webhook] Failed to record payment_failed for user {uid}: {e}")
+
+        # Record audit transaction in credit_transactions (0-amount)
+        try:
+            await self.db_client.table("credit_transactions").insert({
+                "user_id": uid,
+                "transaction_type": "payment_failed",
+                "amount": 0,
+                "reason": f"Payment failed - invoice {invoice_id}",
+                "metadata": {
+                    "invoice_id": invoice_id,
+                    "customer_id": customer_id,
+                    "source": "stripe_webhook",
+                },
+            }).execute()
+            logger.info(f"[Webhook] Recorded payment_failed transaction for user {uid}")
+        except Exception as e:
+            logger.warning(f"[Webhook] Failed to record credit_transactions for payment_failed, user {uid}: {e}")
 
         return {"status": "ok", "action": "marked_past_due", "user_id": uid}
 

@@ -1099,8 +1099,9 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
         'credit_consume', 'marketplace_purchase',
         'credits_expired', 'monthly_credits_cleared',
         'refund_reversal', 'chargeback_reversal',
-        -- 重置/调整 (=) — 3 types
-        'monthly_reset', 'subscription_upgrade', 'subscription_downgrade'
+        -- 重置/调整/事件 (=) — 5 types  (GAP-001 Phase 4: +payment_failed, +subscription_canceled)
+        'monthly_reset', 'subscription_upgrade', 'subscription_downgrade',
+        'payment_failed', 'subscription_canceled'
     )),
     -- ⚠️ DEPRECATED: tx_type 已废弃，新代码请使用 transaction_type
     -- 保留仅为向后兼容，触发器自动同步值; 仍允许旧值 (已有数据兼容)
@@ -1114,6 +1115,7 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
         'credits_expired', 'monthly_credits_cleared',
         'refund_reversal', 'chargeback_reversal',
         'monthly_reset', 'subscription_upgrade', 'subscription_downgrade',
+        'payment_failed', 'subscription_canceled',
         -- LEGACY (旧数据兼容, 新代码不使用)
         'purchase', 'ai_generation', 'smart_scan', 'refund',
         'signup_bonus', 'referral_bonus', 'campaign_reward',
@@ -2810,6 +2812,24 @@ BEGIN
         NOW()
     );
 
+    -- GAP-002 Phase 4: 写入 subscription_history
+    INSERT INTO subscription_history (
+        user_id, tier, action, stripe_subscription_id, stripe_event_id,
+        effective_date, metadata
+    ) VALUES (
+        p_user_id,
+        p_plan,
+        'upgrade',
+        NULL,  -- subscription_id 不在此 RPC 参数中
+        NULL,
+        NOW(),
+        jsonb_build_object(
+            'previous_tier', COALESCE(v_current_tier, 't1'),
+            'session_id', p_session_id,
+            'payment_id', v_payment_id
+        )
+    );
+
     RETURN jsonb_build_object(
         'success', true,
         'user_id', p_user_id,
@@ -2821,7 +2841,7 @@ END;
 $$ LANGUAGE plpgsql
 SET search_path = 'public';
 
-COMMENT ON FUNCTION process_subscription_start IS 'WS3: 原子处理首次订阅 (tier更新+支付记录+积分发放)，幂等';
+COMMENT ON FUNCTION process_subscription_start IS 'WS3: 原子处理首次订阅 (tier更新+支付记录+积分发放+历史记录)，幂等';
 
 -- ----------------------------------------------------------------------------
 -- process_subscription_renewal - 原子处理订阅续费 (#49)
@@ -2937,6 +2957,20 @@ BEGIN
         NOW()
     );
 
+    -- GAP-002 Phase 4: 写入 subscription_history
+    INSERT INTO subscription_history (
+        user_id, tier, action, stripe_subscription_id, stripe_event_id,
+        effective_date, metadata
+    ) VALUES (
+        p_user_id,
+        p_tier,
+        'renew',
+        NULL,
+        NULL,
+        NOW(),
+        jsonb_build_object('invoice_id', p_invoice_id, 'payment_id', v_payment_id)
+    );
+
     RETURN jsonb_build_object(
         'success', true,
         'user_id', p_user_id,
@@ -2947,7 +2981,7 @@ END;
 $$ LANGUAGE plpgsql
 SET search_path = 'public';
 
-COMMENT ON FUNCTION process_subscription_renewal IS 'WS3: 原子处理订阅续费 (支付记录+状态更新+积分重置)，幂等';
+COMMENT ON FUNCTION process_subscription_renewal IS 'WS3: 原子处理订阅续费 (支付记录+状态更新+积分重置+历史记录)，幂等';
 
 -- ----------------------------------------------------------------------------
 -- admin_adjust_credits_atomic - 原子管理员积分调整 (v3.5 审计 P0)
@@ -3157,6 +3191,29 @@ BEGIN
         );
     END IF;
 
+    -- GAP-002 Phase 4: 写入 subscription_history
+    INSERT INTO subscription_history (
+        user_id, tier, action, stripe_subscription_id, stripe_event_id,
+        effective_date, metadata
+    ) VALUES (
+        p_user_id,
+        p_new_tier,
+        CASE
+            WHEN p_reason = 'sub_canceled' THEN 'cancel'
+            WHEN p_reason = 'tier_downgrade' THEN 'downgrade'
+            ELSE 'cancel'
+        END,
+        (p_metadata->>'subscription_id')::TEXT,
+        (p_metadata->>'stripe_event_id')::TEXT,
+        NOW(),
+        jsonb_build_object(
+            'previous_tier', v_profile.tier,
+            'reason', p_reason,
+            'cleared_credits', v_cleared_monthly,
+            'payment_id', v_payment_id
+        )
+    );
+
     RETURN jsonb_build_object(
         'success', true,
         'previous_tier', v_profile.tier,
@@ -3168,7 +3225,7 @@ END;
 $$ LANGUAGE plpgsql
 SET search_path = 'public';
 
-COMMENT ON FUNCTION process_subscription_termination IS 'WS4: 原子处理订阅终止 (tier降级+积分清零+审计记录)，统一所有取消/降级路径';
+COMMENT ON FUNCTION process_subscription_termination IS 'WS4: 原子处理订阅终止 (tier降级+积分清零+审计记录+历史记录)，统一所有取消/降级路径';
 
 
 -- ---------------------------------------------------------------------------

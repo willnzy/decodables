@@ -1148,6 +1148,33 @@ WORKSPACE_FEATURE_OVERRIDES_DB_TO_DOMAIN: Dict[str, str] = {
     'updated_at': 'updated_at',
 }
 
+# reconciliation_results 表 (GAP-006 Phase 4)
+RECONCILIATION_RESULTS_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'result_id',
+    'reconciliation_type': 'reconciliation_type',
+    'status': 'status',
+    'user_id': 'user_id',
+    'checked_at': 'checked_at',
+    'discrepancy_details': 'discrepancy_details',
+    'resolved_at': 'resolved_at',
+    'resolved_by': 'resolved_by',
+    'resolution_note': 'resolution_note',
+    'created_at': 'created_at',
+}
+
+# subscription_history 表 (GAP-002 Phase 4)
+SUBSCRIPTION_HISTORY_DB_TO_DOMAIN: Dict[str, str] = {
+    'id': 'history_id',
+    'user_id': 'user_id',
+    'tier': 'tier',
+    'action': 'action',
+    'stripe_subscription_id': 'stripe_subscription_id',
+    'stripe_event_id': 'stripe_event_id',
+    'effective_date': 'effective_date',
+    'metadata': 'metadata',
+    'created_at': 'created_at',
+}
+
 # user_discounts 表
 USER_DISCOUNTS_DB_TO_DOMAIN: Dict[str, str] = {
     'id': 'discount_id',

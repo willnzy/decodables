@@ -43,10 +43,12 @@ class TransactionType(str, Enum):
     REFUND_REVERSAL = "refund_reversal"              # Refund clawback (charge.refunded)
     CHARGEBACK_REVERSAL = "chargeback_reversal"      # Bank dispute clawback (charge.dispute.created)
 
-    # ═══ Reset/Adjustment (=) — 3 types ═══
+    # ═══ Reset/Adjustment/Event (=) — 5 types ═══  (GAP-001 Phase 4: +2)
     MONTHLY_RESET = "monthly_reset"                  # Monthly credits reset to tier quota
     SUBSCRIPTION_UPGRADE = "subscription_upgrade"    # Upgrade differential (+diff)
     SUBSCRIPTION_DOWNGRADE = "subscription_downgrade"  # Downgrade excess removal (-diff)
+    PAYMENT_FAILED = "payment_failed"                # Stripe payment failure event (0-amount audit)
+    SUBSCRIPTION_CANCELED = "subscription_canceled"  # Subscription cancellation event (0-amount audit)
 
     # ═══ Legacy members (Phase 2 transitional, removed after all code migrated) ═══
     # Kept WITHOUT prefix so existing code (TransactionType.AI_GENERATION etc.) still works.

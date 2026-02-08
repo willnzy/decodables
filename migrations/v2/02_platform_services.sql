@@ -1720,6 +1720,43 @@ CREATE POLICY workspace_feature_overrides_service_all ON workspace_feature_overr
     FOR ALL TO service_role USING (true) WITH CHECK (true);
 
 
+-- ----------------------------------------------------------------------------
+-- 30. reconciliation_results (对账审计 — GAP-006 Phase 4)
+-- ----------------------------------------------------------------------------
+-- 存储余额对账 (GAP-004) 和 Stripe 对账 (GAP-005) 的差异记录
+-- 仅 service_role 可访问
+CREATE TABLE IF NOT EXISTS reconciliation_results (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    reconciliation_type TEXT NOT NULL CHECK (reconciliation_type IN (
+        'balance_check', 'stripe_payment', 'stripe_subscription',
+        'monthly_reset', 'marketplace_earning'
+    )),
+    status TEXT NOT NULL CHECK (status IN (
+        'ok', 'discrepancy', 'error', 'resolved', 'ignored'
+    )),
+    user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    discrepancy_details JSONB DEFAULT '{}',
+    resolved_at TIMESTAMPTZ,
+    resolved_by UUID REFERENCES profiles(id) ON DELETE SET NULL,
+    resolution_note TEXT,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_reconciliation_type_status
+    ON reconciliation_results(reconciliation_type, status);
+CREATE INDEX IF NOT EXISTS idx_reconciliation_user_id
+    ON reconciliation_results(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_reconciliation_checked_at
+    ON reconciliation_results(checked_at DESC);
+
+-- reconciliation_results RLS (service_role only)
+ALTER TABLE reconciliation_results ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY reconciliation_results_service_all ON reconciliation_results
+    FOR ALL TO service_role USING (true) WITH CHECK (true);
+
+
 -- ============================================================================
 -- 提交事务
 -- ============================================================================
