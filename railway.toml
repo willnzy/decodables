@@ -44,10 +44,6 @@
 #   SUPABASE_URL = "https://xxx.supabase.co"
 #   SUPABASE_KEY = "eyJxxx..."
 #
-#   # Auth (Clerk)
-#   CLERK_PEM_PUBLIC_KEY = "-----BEGIN PUBLIC KEY-----..."
-#   CLERK_WEBHOOK_SECRET = "whsec_xxx"
-#
 #   # Payment (Stripe)
 #   STRIPE_SECRET_KEY = "sk_live_xxx"
 #   STRIPE_WEBHOOK_SECRET = "whsec_xxx"

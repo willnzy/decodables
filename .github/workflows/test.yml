@@ -167,7 +167,6 @@ jobs:
           DASHSCOPE_API_KEY: 'test-dashscope-key'
           SUPABASE_URL: 'https://mock.supabase.co'
           SUPABASE_KEY: 'mock_supabase_key'
-          CLERK_WEBHOOK_SECRET: 'whsec_test_mock'
 
   # ============================================
   # Integration Tests (Allow Failures)
