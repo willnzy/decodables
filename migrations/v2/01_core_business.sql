@@ -412,7 +412,7 @@ CREATE TABLE IF NOT EXISTS workspaces (
     name TEXT NOT NULL,
     description TEXT,
 
-    -- 所有者 (Clerk user_id)
+    -- 所有者 (user_id)
     owner_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
 
     -- 配置 (一期简化: 全部为 TRUE)

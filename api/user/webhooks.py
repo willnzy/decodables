@@ -2,12 +2,6 @@
 Webhooks API - Third-party webhook handlers.
 
 @module api.user.webhooks
-@version 3.0.0 (Self-hosted auth migration)
-
-Changes in v3.0.0:
-- Removed Clerk webhook endpoint (replaced by self-hosted auth)
-- Removed svix dependency
-- Only Stripe webhooks remain
 
 Endpoints:
 - POST /api/v2/user/webhooks/stripe - Stripe payment events

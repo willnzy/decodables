@@ -5,14 +5,12 @@ Fixtures for testing against the actual staging API.
 Supports both regular user and admin user testing.
 
 Token generation: Self-hosted HS256 JWT via test_jwt_generator.
-No external auth provider required.
 
 Token priority:
 1. Environment variable: TEST_USER_TOKEN / TEST_ADMIN_TOKEN
 2. Auto-generate: test_jwt_generator (HS256, uses AUTH_JWT_SECRET)
 
 @module tests.integration.staging.conftest
-@version 4.0.0 (self-hosted auth, removed Clerk dependency)
 """
 
 import os

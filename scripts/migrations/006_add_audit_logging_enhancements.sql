@@ -9,7 +9,7 @@
 ALTER TABLE admin_operations
 ADD COLUMN IF NOT EXISTS source VARCHAR(50) DEFAULT 'api';
 
-COMMENT ON COLUMN admin_operations.source IS 'Action source: api (manual), webhook, stripe, clerk';
+COMMENT ON COLUMN admin_operations.source IS 'Action source: api (manual), webhook, stripe, auth';
 
 -- ========================================
 -- Step 2: Add 'metadata' column (alias for action_details for backward compatibility)
@@ -57,7 +57,7 @@ ADD CONSTRAINT check_operation_type CHECK (
         'webhook_subscription_create', 'webhook_subscription_update', 'webhook_subscription_cancel',
         'webhook_invoice_paid', 'webhook_refund_process', 'webhook_credits_purchase',
 
-        -- NEW: Webhook events (Clerk)
+        -- NEW: Webhook events (Auth)
         'webhook_user_create', 'webhook_tier_update',
 
         -- Legacy compatibility

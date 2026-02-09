@@ -2,7 +2,7 @@
 Test JWT Generator — Self-hosted HS256 tokens.
 
 Generates JWT tokens for integration testing using the same HS256 algorithm
-as the production TokenService. No Clerk dependency required.
+as the production TokenService.
 
 Usage:
     from tests.integration.staging.test_jwt_generator import generate_test_token

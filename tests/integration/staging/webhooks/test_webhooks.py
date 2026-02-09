@@ -9,8 +9,6 @@ Webhooks API Integration Tests
 - 但需要签名验证
 - 测试无签名请求应被拒绝
 
-v3.0.0: Removed Clerk webhook tests (self-hosted auth migration)
-
 @module tests.integration.staging.webhooks.test_webhooks
 """
 

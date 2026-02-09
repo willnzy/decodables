@@ -39,7 +39,7 @@ At **{{site.name}}**, we are committed to protecting your privacy and ensuring t
 
 When you create an account or use our services, we may collect:
 
-- **Account Information:** Name, email address, and password (managed securely through Clerk)
+- **Account Information:** Name, email address, and password (managed securely with encrypted storage)
 - **Profile Information:** Optional profile picture and display name
 - **Payment Information:** Billing details processed securely through Stripe (we never store your full credit card number)
 - **Content:** Projects, images, and other content you create on our platform
@@ -93,7 +93,6 @@ We do **not** sell your personal information. We may share data with:
 ### 3.1 Service Providers
 
 - **Supabase:** Database hosting with row-level security
-- **Clerk:** Authentication and user management
 - **Stripe:** Payment processing
 - **Vercel/Railway:** Application hosting
 - **FAL.ai/OpenAI:** AI image generation (prompts only, not personal data)
@@ -112,7 +111,7 @@ We implement industry-standard security measures:
 
 - **Encryption:** All data transmitted via HTTPS/TLS
 - **Database Security:** Row-level security policies in Supabase
-- **Authentication:** Secure token-based authentication via Clerk
+- **Authentication:** Secure token-based authentication with JWT and encrypted refresh tokens
 - **Payment Security:** PCI-compliant payment processing via Stripe
 - **Access Controls:** Limited employee access to user data
 

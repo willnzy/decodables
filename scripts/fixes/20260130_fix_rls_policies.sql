@@ -137,9 +137,6 @@ CREATE POLICY service_role_all ON analytics_aggregation FOR ALL TO service_role 
 DROP POLICY IF EXISTS service_role_all ON analytics_events;
 CREATE POLICY service_role_all ON analytics_events FOR ALL TO service_role USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS service_role_all ON clerk_webhook_events;
-CREATE POLICY service_role_all ON clerk_webhook_events FOR ALL TO service_role USING (true) WITH CHECK (true);
-
 DROP POLICY IF EXISTS service_role_all ON config_audit_logs;
 CREATE POLICY service_role_all ON config_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
 

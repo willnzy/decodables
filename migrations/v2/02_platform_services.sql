@@ -15,7 +15,7 @@ BEGIN;
 -- ============================================================================
 -- Layer 1: 无依赖 (仅依赖 profiles)
 --   - activity_logs, aggregated_stats, ai_usage_daily, analytics_aggregation
---   - analytics_events, clerk_webhook_events, config_audit_logs, daily_metrics
+--   - analytics_events, config_audit_logs, daily_metrics
 --   - campaigns (依赖 profiles - MOVED HERE because daily_themes depends on it)
 --   - daily_themes (依赖 campaigns), feature_flags, holidays, monthly_metrics
 --   - notifications, stripe_webhook_events, system_resource_audit_logs, user_events
@@ -175,7 +175,7 @@ CREATE INDEX IF NOT EXISTS idx_analytics_events_type_created
 
 
 -- ----------------------------------------------------------------------------
--- 6. (已删除: clerk_webhook_events - 迁移到自建认证系统后不再需要)
+-- 6. (已删除: 旧认证系统相关表 - 迁移到自建认证系统后不再需要)
 -- ----------------------------------------------------------------------------
 
 

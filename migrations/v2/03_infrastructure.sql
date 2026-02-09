@@ -1670,8 +1670,6 @@ CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_pending
     ON stripe_webhook_events(processing_status, created_at)
     WHERE processing_status IN ('pending', 'failed');
 
--- (已删除: clerk_webhook_events - 迁移到自建认证系统后不再需要)
-
 
 CREATE OR REPLACE FUNCTION p_start_webhook_processing(
     p_table_name TEXT,
@@ -1803,7 +1801,6 @@ ALTER TABLE aggregated_stats ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_usage_daily ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_aggregation ENABLE ROW LEVEL SECURITY;
 ALTER TABLE analytics_events ENABLE ROW LEVEL SECURITY;
--- (已删除: clerk_webhook_events RLS)
 ALTER TABLE config_audit_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE daily_themes ENABLE ROW LEVEL SECURITY;
@@ -1898,7 +1895,6 @@ CREATE POLICY service_role_all ON aggregated_stats FOR ALL TO service_role USING
 CREATE POLICY service_role_all ON ai_usage_daily FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON analytics_aggregation FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON analytics_events FOR ALL TO service_role USING (true) WITH CHECK (true);
--- (已删除: clerk_webhook_events RLS policy)
 CREATE POLICY service_role_all ON config_audit_logs FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON daily_metrics FOR ALL TO service_role USING (true) WITH CHECK (true);
 CREATE POLICY service_role_all ON daily_themes FOR ALL TO service_role USING (true) WITH CHECK (true);
@@ -1950,7 +1946,7 @@ CREATE POLICY service_role_all ON support_replies FOR ALL TO service_role USING 
 -- - 后端通过 service_role key 访问，不受这些策略影响
 -- - 这些策略作为额外防线：即使 anon/authenticated key 泄露，
 --   authenticated 用户也只能访问自己的数据
--- - user_id 字段类型为 TEXT (Clerk ID 格式: user_xxx)
+-- - user_id 字段类型为 UUID (关联 profiles.id)
 -- - auth.uid() 匹配 Supabase Auth JWT 中的用户 ID
 -- ============================================================================
 

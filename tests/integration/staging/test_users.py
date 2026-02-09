@@ -10,7 +10,6 @@ Test User Configuration
 - 敏感信息不要提交到代码仓库
 
 @module tests.integration.staging.test_users
-@version 2.0.0 (self-hosted auth, removed Clerk dependency)
 """
 
 

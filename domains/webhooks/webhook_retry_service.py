@@ -2,10 +2,8 @@
 Webhook Retry Service
 
 Business logic for retrying failed webhook processing (P3-022).
-Clerk webhooks removed — self-hosted auth handles user lifecycle.
 
 @module domains.webhooks.webhook_retry_service
-@version 2.0.0
 """
 
 import logging
@@ -34,7 +32,6 @@ class WebhookRetryService:
     - Reprocess events using webhook services
     - Update status and retry counts
 
-    v2.0.0: Removed Clerk webhook retry (self-hosted auth)
     v1.0.0: Created for P3-022 (Webhook Retry Logic)
     """
 
@@ -169,7 +166,7 @@ class WebhookRetryService:
 
     async def retry_all_failed_webhooks(self) -> Dict[str, Any]:
         """
-        Retry all failed webhooks (Stripe only, Clerk removed).
+        Retry all failed webhooks (Stripe only).
 
         Returns:
             Combined statistics

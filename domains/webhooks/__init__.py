@@ -2,7 +2,6 @@
 Webhooks Domain
 
 Services for handling third-party webhook events.
-Clerk webhook removed — replaced by self-hosted auth (Phase 2).
 """
 
 from domains.webhooks.stripe_webhook_service import StripeWebhookService

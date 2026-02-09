@@ -6,7 +6,6 @@ Endpoints:
 
 Created: 2026-01-08 (Stage 3: Week 1 Day 3)
 Updated: 2026-01-10 - v2.5.0 Service layer migration
-Updated: v3.0.0 - Removed Clerk webhook tests (self-hosted auth)
 
 IMPORTANT: Webhook endpoints are critical for payment.
 These tests focus on business logic validation.
@@ -385,7 +384,7 @@ class TestStripeWebhook:
 
 
 """
-Test Coverage Summary (v3.0.0)
+Test Coverage Summary
 
 Stripe Webhook Tests (7 tests):
 - Missing Stripe-Signature header (422)
@@ -397,6 +396,4 @@ Stripe Webhook Tests (7 tests):
 - Subscription canceled
 
 Total: 7 tests
-
-v3.0.0: Removed Clerk webhook tests (self-hosted auth migration)
 """
