@@ -299,7 +299,8 @@ async def _diag_rate_limit_handler(request, exc):
     method = request.method
     client_ip = request.client.host if request.client else "unknown"
     _diag_rl_logger.warning(f"[DIAG] 429 RATE LIMITED: {method} {path} from {client_ip}")
-    return await _rate_limit_exceeded_handler(request, exc)
+    # _rate_limit_exceeded_handler returns JSONResponse (not a coroutine), do NOT await it
+    return _rate_limit_exceeded_handler(request, exc)
 
 app.add_exception_handler(RateLimitExceeded, _diag_rate_limit_handler)
 
