@@ -334,10 +334,6 @@ async def refresh_token(
     With rotate=true (default), the old refresh token is revoked
     and a new one is issued.
     """
-    client_ip = request.client.host if request.client else "unknown"
-    has_refresh = bool(body.refresh_token)
-    logger.warning(f"[DIAG] refresh_token called: ip={client_ip}, has_refresh_token={has_refresh}")
-
     device_info = _get_device_info(request)
 
     try:
@@ -346,9 +342,7 @@ async def refresh_token(
             device_info=device_info,
             rotate=body.rotate,
         )
-        logger.warning(f"[DIAG] refresh_token SUCCESS: ip={client_ip}")
     except Exception as e:
-        logger.warning(f"[DIAG] refresh_token FAILED: ip={client_ip}, error={type(e).__name__}: {e}")
         raise
 
     return RefreshTokenResponse(
