@@ -1,8 +1,8 @@
-# 系统审计综合标准 v1.0
+# 系统审计综合标准 v1.2
 
 > 本文档汇总自 5 份审计实践文档的所有有用审计点，作为 Make Decodables 项目代码审计的统一标准。
 
-**版本**: 1.0
+**版本**: 1.2
 **日期**: 2026-02-12
 **来源文档**:
 - `20260201-systems-audit-prompts.md` — 18 系统审计模板 + 附录 A-G
@@ -55,10 +55,23 @@
 
 ### D. 用户流维度 (D24-D25) — 来自 Phase 5
 
+> Phase 5 以**用户操作路径为主线**的跨组件状态走查 (非逐文件审查)，覆盖 Phase 1-4 的盲区。
+
 | ID | 维度 | 检查要点 |
 |----|------|----------|
 | D24 | **页面数据加载状态** | 页面首次加载时所有数据源的 loading 编排；避免瀑布式加载；白屏防护 |
 | D25 | **跨组件状态消费** | 多个组件消费同一 Store 时的状态同步；乐观更新一致性；竞态条件处理 |
+
+**D24 执行方法**: 对每个需要异步数据的页面，检查 4 种状态 UI 覆盖:
+1. Loading → Success (正常数据展示)
+2. Loading → Error → 重试 (错误 UI + 重试按钮)
+3. Empty (成功但数据为空 — 空状态 UI)
+4. 关键检查: 追踪到**最终消费方** — gate 是否区分 "还在加载" vs "加载失败" vs "数据为空"
+
+**D25 执行方法**: 跨组件一致性验证:
+1. **初始化链协调**: 列出页面所有数据初始化链的依赖关系，验证后者是否等待前者完成
+2. **状态消费一致性**: 同一 store/hook 暴露的状态，在不同页面的消费是否一致 (如 isInitialized 某页检查但另一页遗漏)
+3. **Auth Guard vs Data Guard**: Auth Guard 通过后，页面是否还需要 Data Guard (依赖 useUserStore 数据)
 
 ---
 
@@ -98,13 +111,18 @@
 - [ ] 外键关系正确且有索引
 - [ ] 直接修改 v2 主 schema 文件 (01/02/03)，不创建新迁移文件
 
-#### CL-3.6 前端 API 层检查
+#### CL-3.6 前端 API 层 + 分页一致性检查
 - [ ] URL 路径与后端 Router 完全一致 (D9)
 - [ ] HTTP Method 正确 (GET/POST/PUT/PATCH/DELETE) (D9)
 - [ ] Path 参数类型匹配 (slug vs id) (D9)
 - [ ] Query 参数名与后端一致 (D18, D19)
 - [ ] 请求/响应 TypeScript 类型与后端 Pydantic schema 一致 (D12)
 - [ ] 使用 AbortController 支持请求取消
+- [ ] 分页: 所有端点统一使用 offset + limit (非 page + limit) (D18)
+- [ ] 分页: 默认值前后端一致 (如 limit 默认 20)
+- [ ] 分页: total 返回真实总数 (非 len(items)); 有 has_more 或可通过 total+offset 计算
+- [ ] 分页: offset 超出 total 时正确返回空页; 前端 "加载更多" 正确判断终止条件
+- [ ] 分页: 所有分页端点的响应格式统一 (data + total + offset + limit)
 
 #### CL-3.7 前端 Store/Hook 检查
 - [ ] 按领域拆分 Store (非单一大 Store) (D11)
@@ -121,18 +139,21 @@
 - [ ] 错误消息用户友好 (getUserFriendlyMessage)
 
 #### CL-3.9 端到端数据流检查
-- [ ] 创建流: UI → Store → API → Router → Service → Repository → DB (D17)
-- [ ] 读取流: DB → Repository → Service → Router → API → Store → UI (D17)
+> 注: 本清单聚焦完整链路 (UI↔DB) 的数据流走通; 数据库层事务原子性见 CL-3.3
+- [ ] 创建流: UI → Store → API → Router → Service → Repository → DB — 每层参数传递无遗漏 (D17)
+- [ ] 读取流: DB → Repository → Service → Router → API → Store → UI — Entity 类型一致 (D17)
 - [ ] 更新流: 含乐观更新回滚机制 (D25)
-- [ ] 删除流: 软删除/硬删除一致 (D17)
-- [ ] 批量操作: 事务原子性 + 前端批量状态更新 (D3)
+- [ ] 删除流: 软删除/硬删除前后端一致 (D17)
+- [ ] 批量操作: 前端批量状态更新 + 部分失败时 UI 回滚到操作前状态
+- [ ] 批量操作: 后端批量接口返回逐条结果 (非全部成功/全部失败)
 
-#### CL-3.10 安全检查
-- [ ] SQL 查询参数化 (D23)
-- [ ] 用户输入 html.escape (D23)
-- [ ] 日志脱敏 password/token/email/phone/card (D23)
-- [ ] API 端点认证/授权正确 (D6)
-- [ ] 敏感操作有速率限制
+#### CL-3.10 前端安全专项检查
+> 注: 后端认证/授权通用检查见 CL-3.2 (D6); 本清单聚焦前端与跨层安全
+- [ ] 前端 localStorage/cookie 中是否存储了敏感 token (应使用 httpOnly cookie)
+- [ ] 用户输入渲染时是否有 XSS 防护 — html.escape / DOMPurify (D23)
+- [ ] 前端日志/Sentry 上报是否脱敏 password/token/email (D23)
+- [ ] 前端路由守卫是否与后端权限同步 (前端放行但后端拒绝 = 体验差; 前端拒绝但后端放行 = 安全隐患)
+- [ ] 敏感操作 (删除/支付/密码修改) 前端是否有二次确认 + 后端速率限制
 
 #### CL-3.11 用户流端到端检查 (Phase 5)
 - [ ] 页面首次加载: 所有数据源并行获取 (非瀑布式)
@@ -166,6 +187,8 @@
 - [ ] 列出所有导致同一业务结果的路径 (如: 取消订阅 = admin取消 + webhook取消 + unpaid自动取消)
 - [ ] 每条路径是否执行了完整的副作用 (如: 清零月度积分 + 降级 tier + 记录 payment_record)
 - [ ] 退费处理是否区分不同原始交易类型 (积分购买退费 vs 订阅退费)
+- [ ] 订阅续期 4 条路径是否全部覆盖: ① 手动续期 ② Stripe 自动续期 webhook ③ admin 手动操作 ④ 过期自动降级
+- [ ] nullable 字段: 前后端对 null/undefined/空字符串的处理是否一致 (如 avatar_url 为 null 时前端是否有 fallback)
 - [ ] Stripe Customer 是否与系统用户绑定 (checkout 时传入 customer_id)
 - [ ] 已有活跃订阅时是否拦截重复购买
 - [ ] Webhook 签名验证是否显式设置 tolerance
@@ -232,15 +255,7 @@
 - [ ] 文件扩展名是否使用白名单校验
 - [ ] 前端校验规则与后端是否一致 (如 email 格式)
 
-#### CL-3.18 分页一致性检查
-- [ ] 所有端点是否统一使用 offset + limit (非 page + limit)
-- [ ] 前端调用与后端接受的参数名是否完全一致
-- [ ] 默认值是否一致 (如 limit 默认 20)
-- [ ] total 是否返回真实总数 (非 len(items) 即当前页数量)
-- [ ] 是否有 has_more 字段 (或前端能通过 total + offset 计算)
-- [ ] 所有分页端点的响应格式是否统一
-- [ ] offset 超出 total 时是否正确返回空页
-- [ ] 前端 "加载更多" / 无限滚动是否正确判断终止条件
+#### CL-3.18 (已合并到 CL-3.6)
 
 #### CL-3.19 可观测性与监控检查
 - [ ] 所有 API 路由文件是否有 logger 实例
@@ -296,7 +311,7 @@
 - [ ] 全局异常处理器 (FastAPI exception_handler) 是否覆盖所有异常类型
 - [ ] 外部服务调用 (Stripe/FAL/Supabase) 是否有超时设置
 - [ ] 重试逻辑是否使用指数回退 (注释与实现一致)
-- [ ] 是否有熔断器 (Circuit Breaker) 或 fallback 机制
+- [ ] 是否有熔断器 (Circuit Breaker) 或 fallback 机制 — 完整实现需包含三态: Closed (正常) → Open (熔断, 直接 fallback) → Half-Open (试探性放行少量请求, 成功则恢复 Closed, 失败则回到 Open); 自动恢复需有 cooldown 计时器
 - [ ] 重试是否只对幂等操作 (GET/PUT)，非幂等 (POST) 需谨慎
 - [ ] DB 查询是否有全局超时保护
 - [ ] bare except: pass 是否已消除 (至少 logger.exception())
@@ -484,7 +499,53 @@ Step 4: 交叉验证 (与其他层对比)
 - 每完成一个模块立即 commit
 - commit message 包含下一步计划
 - 超过 6 轮交互或 5 个文件修改 → 主动建议开新对话
-- Forward-ref: 跨模块发现记录到 `forward-refs.md`，在目标模块轮次处理
+- 会话中断 (context 耗尽): 下个 session 读取 tracker 恢复，从上次进度继续
+
+**Forward-ref 机制** (跨模块发现传递):
+
+Forward-ref 是指在当前系统审计中发现的问题，但其根因或影响涉及**其他系统**。
+
+```
+记录: 系统审计完成后 → 将 forward-ref 填入 findings-tracker 的 forward-ref 表
+迁移: 轮次间衔接时 → 筛选目标系统 ∈ 下一轮待审计系统的条目
+       → 复制到对应系统 session 文件的"已知线索"区域
+       → 在 tracker 中标注"已导入 R{N}"
+消化: R6 综合审计时 → 消化所有未消化的 forward-ref (未消化数 = 0)
+```
+
+示例: R1 审计系统 2 时发现 "useUserStore 全量订阅问题影响 Navbar" → forward-ref 目标: 基础设施层 (R5) → R4 结束后复制到 r5-sys00 的"已知线索" → R5 优先验证
+
+**上下文预算分配策略**:
+
+| 阶段 | 每 session 范围 | 粒度 |
+|------|----------------|------|
+| Phase 1 (审计) | workflow + tracker + 目标系统 session 文件 | 1 个大系统 或 1-2 个小系统 |
+| Phase 2 (方案) | findings-tracker (全部 findings) + workflow | 可能需要 2-3 个 session |
+| Phase 3 (修复) | fix-plan (当前 WS) + tracker (进度) | 1-3 个 WS (取决于复杂度) |
+
+特殊案例: 超大系统 (如 100+ 组件) 需拆分为 2 个 session — Session A: 后端 + 前端 Services/Stores; Session B: 前端 Components + 跨层审计
+
+### 3.5 共享文件审计策略 (R5 轮)
+
+多个系统共用的文件/模块需明确审计责任归属，避免重复审计或遗漏:
+
+| 共享文件/模块 | 涉及系统数 | 审计责略 |
+|-------------|---------|---------|
+| `lib/config/` | 2 | 系统 1 审计存储, 系统 2 审计评估 |
+| `services/api.ts` | 基础设施+全前端 | 基础设施层审计核心, 其他系统复用结论 |
+| `services/adminService.ts` | Admin | 基础设施层审计, 其他系统复用结论 |
+| `GlobalProviders.tsx` | 4 | 基础设施审计初始化链路, 各系统审计自己消费的部分 |
+| `hooks/useCredits.ts` | 2 | 系统 14 审计积分逻辑, 系统 15 审计 AI 扣积分 |
+| `hooks/useTierFeature.ts` | 3 | 系统 14 审计核心, 其他系统验证使用方 |
+| `shared/ai/` | 2 | 系统 15 审计核心 AI, 系统 3 审计 theme_generator |
+| `infrastructure/task_queue/` | 2 | 系统 18 审计队列核心, 系统 15 审计导出使用 |
+| `app/dashboard/` | 4 | 四个系统分别审计各自部分 (onboarding/workspace/项目/素材) |
+| `lib/useUserStore.ts` | 基础设施+系统14+多个 | 基础设施审计核心, 系统 14 审计积分/Tier 字段 |
+
+**原则**:
+- 每个共享文件有且仅有一个**主审计责任方** (核心逻辑审计)
+- 其他系统只审计自己**消费方**的正确性 (参数传递/返回值使用)
+- 复用结论: 主审计方的结论直接复用，不重复审计
 
 ---
 
@@ -1049,9 +1110,25 @@ npx tsc --noEmit                              # 类型检查
 
 ---
 
-**文档版本**: v1.1
+**文档版本**: v1.2
 **最后更新**: 2026-02-12
 **维护者**: Make Decodables 工程团队
 
 **v1.0**: 初版，汇总 5 份源文档核心审计点
 **v1.1**: 补充 CL-3 专项清单 (CL-3.12~3.20)、CL-4 扩展版 (OWASP/SEO/跨平台)、G.1-G.18 方法论
+**v1.2**: 验证修正 — 修复 4 项错误 (E1-E4)、合并 3 对重复 (D1-D3)、补充 4 项遗漏 (O3/O5/O6/O7); 详见下方变更记录
+
+**v1.2 变更记录**:
+- **E1**: CL-3.9 补充前端批量操作回滚机制
+- **E2**: CL-3.13 补充 nullable 字段一致性检查
+- **E3**: CL-4.3 完善熔断器三态定义 (Closed→Open→Half-Open)
+- **E4**: CL-3.13 补充第 4 条订阅续期路径 (auto-renewal webhook)
+- **D1**: CL-3.10 精化为"前端安全专项"，消除与 CL-3.2 (后端认证) 的重叠
+- **D2**: CL-3.9 明确聚焦 E2E 数据流，消除与 CL-3.3 (DB 事务原子性) 的重叠
+- **D3**: CL-3.18 分页检查合并到 CL-3.6
+- **O3**: 新增 §3.5 共享文件审计策略表 (14 个共享模块责任归属)
+- **O5**: D24/D25 补充 Phase 5 执行方法 (4 态检查 + 跨组件一致性验证)
+- **O6**: §3.4 补充 Forward-ref 机制详情 (记录→迁移→消化流程)
+- **O7**: §3.4 补充上下文预算分配策略 (按阶段的 session 粒度)
+- **O1/O2 (F.6/F.7)**: 经验证源文档中不存在这两个章节，原报告为误报，不需要添加
+- **O4 (R6 跨系统审计)**: G.18 第 5 层已覆盖，不需要额外添加

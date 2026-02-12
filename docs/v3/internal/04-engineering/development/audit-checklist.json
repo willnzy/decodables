@@ -1,0 +1,628 @@
+{
+  "$comment": "audit-standard.md 的结构化数据提取，用于程序化消费。方法论/执行流程等叙述性内容仍在 Markdown 中。",
+  "meta": {
+    "version": "1.2",
+    "source": "audit-standard.md",
+    "lastUpdated": "2026-02-12",
+    "description": "Make Decodables 系统审计检查清单 — 可用于自动化追踪审计进度"
+  },
+
+  "dimensions": [
+    { "id": "D1",  "name": "Router ↔ 文档对齐",       "category": "backend",    "brief": "API 端点与设计文档双向对齐" },
+    { "id": "D2",  "name": "Router ↔ Service 调用链",  "category": "backend",    "brief": "Router 只调用 Service，不直接访问 Repository" },
+    { "id": "D3",  "name": "Service ↔ Repository 数据流", "category": "backend", "brief": "Entity 返回类型、事务边界" },
+    { "id": "D4",  "name": "Repository ↔ DB Schema",   "category": "backend",    "brief": "查询字段与表定义一致、索引覆盖" },
+    { "id": "D5",  "name": "错误处理链路",              "category": "backend",    "brief": "Repository 异常 → Service 业务异常 → HTTP 响应" },
+    { "id": "D6",  "name": "认证与授权",                "category": "backend",    "brief": "auth 装饰器、require_admin、资源归属" },
+    { "id": "D7",  "name": "数据验证",                  "category": "backend",    "brief": "Pydantic schema、枚举与 CHECK 约束一致" },
+    { "id": "D8",  "name": "DDD 合规性",                "category": "backend",    "brief": "分层依赖方向、Service 不跨域调用" },
+    { "id": "D9",  "name": "API 调用 ↔ 后端端点",       "category": "frontend",   "brief": "URL/Method/参数完全匹配" },
+    { "id": "D10", "name": "Hook/Store ↔ API 函数",     "category": "frontend",   "brief": "参数映射和响应解构" },
+    { "id": "D11", "name": "组件 ↔ Hook/Store 消费",    "category": "frontend",   "brief": "精确订阅具体字段" },
+    { "id": "D12", "name": "TypeScript 类型一致性",      "category": "frontend",   "brief": "前端 interface 与后端 Pydantic 对齐" },
+    { "id": "D13", "name": "加载/错误/空状态",           "category": "frontend",   "brief": "三态处理、Skeleton 优于 Spinner" },
+    { "id": "D14", "name": "表单验证",                   "category": "frontend",   "brief": "前后端验证规则一致" },
+    { "id": "D15", "name": "路由与权限",                 "category": "frontend",   "brief": "路由守卫与用户角色/tier 匹配" },
+    { "id": "D16", "name": "响应式设计",                 "category": "frontend",   "brief": "Mobile-First, md=768px" },
+    { "id": "D17", "name": "端到端数据流",               "category": "crossLayer", "brief": "用户操作到 DB 再回前端的完整链路" },
+    { "id": "D18", "name": "分页参数一致性",             "category": "crossLayer", "brief": "offset+limit, 前后端参数名一致" },
+    { "id": "D19", "name": "排序/筛选参数",              "category": "crossLayer", "brief": "前端传递的参数后端确实处理" },
+    { "id": "D20", "name": "缓存策略",                   "category": "crossLayer", "brief": "缓存键与数据更新频率匹配" },
+    { "id": "D21", "name": "WebSocket/实时更新",         "category": "crossLayer", "brief": "事件类型定义一致、重连机制" },
+    { "id": "D22", "name": "国际化",                     "category": "crossLayer", "brief": "i18n 系统、日期数字本地化" },
+    { "id": "D23", "name": "安全审计",                   "category": "crossLayer", "brief": "SQL 参数化、XSS 防护、日志脱敏" },
+    { "id": "D24", "name": "页面数据加载状态",           "category": "userFlow",   "brief": "loading 编排、白屏防护、4 态覆盖" },
+    { "id": "D25", "name": "跨组件状态消费",             "category": "userFlow",   "brief": "状态同步、乐观更新一致性、竞态条件" }
+  ],
+
+  "checklists": {
+    "module": [
+      {
+        "id": "CL-3.2",
+        "name": "后端 Router 检查",
+        "items": [
+          { "check": "每个端点有文档对应",                          "dims": ["D1"] },
+          { "check": "Handler 只调用 Service，不直接访问 Repository", "dims": ["D2"] },
+          { "check": "正确使用 auth 依赖",                          "dims": ["D6"] },
+          { "check": "入参有 Pydantic schema 验证",                  "dims": ["D7"] },
+          { "check": "返回值有 response_model 定义",                 "dims": [] },
+          { "check": "错误响应有统一格式 (status_code + detail)",     "dims": [] },
+          { "check": "分页使用 offset+limit",                        "dims": ["D18"] }
+        ]
+      },
+      {
+        "id": "CL-3.3",
+        "name": "后端 Service 检查",
+        "items": [
+          { "check": "通过依赖注入获取 Repository (非直接实例化)", "dims": [] },
+          { "check": "返回 Entity 对象 (非 dict)",                "dims": ["D3"] },
+          { "check": "多步操作使用事务保证原子性",                 "dims": ["D3"] },
+          { "check": "跨域数据通过 Application Service 协调",      "dims": ["D8"] },
+          { "check": "业务异常有明确的异常类型",                   "dims": ["D5"] },
+          { "check": "日志为结构化格式 (event + extra)",            "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.4",
+        "name": "后端 Repository 检查",
+        "items": [
+          { "check": "使用 Lazy Loading 模式",                      "dims": [] },
+          { "check": "接口使用 ABC + @abstractmethod",              "dims": [] },
+          { "check": "查询字段与数据库 schema 一致",                "dims": ["D4"] },
+          { "check": "返回 Entity (通过 from_dict 转换)",           "dims": [] },
+          { "check": "RPC 参数使用 p_ 前缀",                       "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.5",
+        "name": "数据库 Schema 检查",
+        "items": [
+          { "check": "新表有 updated_at 触发器",                    "dims": [] },
+          { "check": "新表有合理索引",                              "dims": [] },
+          { "check": "软删除表索引使用 WHERE deleted_at IS NULL",    "dims": [] },
+          { "check": "CHECK 约束覆盖枚举字段",                      "dims": [] },
+          { "check": "外键关系正确且有索引",                        "dims": [] },
+          { "check": "直接修改 v2 主 schema 文件 (01/02/03)",        "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.6",
+        "name": "前端 API 层 + 分页一致性检查",
+        "note": "含原 CL-3.18 分页检查内容",
+        "items": [
+          { "check": "URL 路径与后端 Router 完全一致",                        "dims": ["D9"] },
+          { "check": "HTTP Method 正确 (GET/POST/PUT/PATCH/DELETE)",          "dims": ["D9"] },
+          { "check": "Path 参数类型匹配 (slug vs id)",                        "dims": ["D9"] },
+          { "check": "Query 参数名与后端一致",                                "dims": ["D18", "D19"] },
+          { "check": "请求/响应 TypeScript 类型与后端 Pydantic schema 一致",   "dims": ["D12"] },
+          { "check": "使用 AbortController 支持请求取消",                      "dims": [] },
+          { "check": "分页: 所有端点统一使用 offset+limit",                    "dims": ["D18"] },
+          { "check": "分页: 默认值前后端一致 (如 limit 默认 20)",              "dims": ["D18"] },
+          { "check": "分页: total 返回真实总数; 有 has_more 或可计算",         "dims": ["D18"] },
+          { "check": "分页: offset 超出 total 返回空页; 前端正确判断终止",     "dims": ["D18"] },
+          { "check": "分页: 所有分页端点的响应格式统一",                       "dims": ["D18"] }
+        ]
+      },
+      {
+        "id": "CL-3.7",
+        "name": "前端 Store/Hook 检查",
+        "items": [
+          { "check": "按领域拆分 Store (非单一大 Store)",            "dims": ["D11"] },
+          { "check": "组件精确订阅具体字段",                        "dims": ["D11"] },
+          { "check": "异步操作有 loading/error 状态",                "dims": ["D13"] },
+          { "check": "写操作后正确更新本地状态或重新获取",           "dims": ["D20"] },
+          { "check": "使用 Logger 类 (非裸 console.*)",              "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.8",
+        "name": "前端组件检查",
+        "items": [
+          { "check": "处理 loading/error/empty 三种状态",            "dims": ["D13"] },
+          { "check": "表单验证与后端一致",                          "dims": ["D14"] },
+          { "check": "路由权限守卫正确",                            "dims": ["D15"] },
+          { "check": "Mobile-First 响应式",                          "dims": ["D16"] },
+          { "check": "错误消息用户友好 (getUserFriendlyMessage)",    "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.9",
+        "name": "端到端数据流检查",
+        "note": "聚焦完整链路 (UI↔DB); 数据库层事务原子性见 CL-3.3",
+        "items": [
+          { "check": "创建流: UI→Store→API→Router→Service→Repository→DB 参数无遗漏", "dims": ["D17"] },
+          { "check": "读取流: DB→Repository→Service→Router→API→Store→UI 类型一致",   "dims": ["D17"] },
+          { "check": "更新流: 含乐观更新回滚机制",                                    "dims": ["D25"] },
+          { "check": "删除流: 软删除/硬删除前后端一致",                                "dims": ["D17"] },
+          { "check": "批量操作: 前端批量状态更新 + 部分失败时 UI 回滚",                "dims": [] },
+          { "check": "批量操作: 后端批量接口返回逐条结果",                             "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.10",
+        "name": "前端安全专项检查",
+        "note": "后端认证/授权通用检查见 CL-3.2 (D6)",
+        "items": [
+          { "check": "localStorage/cookie 中是否存储了敏感 token",                          "dims": [] },
+          { "check": "用户输入渲染时 XSS 防护 (html.escape / DOMPurify)",                   "dims": ["D23"] },
+          { "check": "前端日志/Sentry 上报是否脱敏 password/token/email",                   "dims": ["D23"] },
+          { "check": "前端路由守卫是否与后端权限同步",                                      "dims": [] },
+          { "check": "敏感操作前端有二次确认 + 后端速率限制",                                "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.11",
+        "name": "用户流端到端检查 (Phase 5)",
+        "items": [
+          { "check": "页面首次加载: 所有数据源并行获取 (非瀑布式)",  "dims": ["D24"] },
+          { "check": "数据依赖: 有依赖的请求正确串联",              "dims": ["D24"] },
+          { "check": "白屏防护: 关键数据加载失败时有 fallback UI",   "dims": ["D24"] },
+          { "check": "跨组件: 多组件消费同一 Store 时状态一致",      "dims": ["D25"] },
+          { "check": "竞态条件: 快速导航时旧请求不覆盖新数据",       "dims": ["D25"] }
+        ]
+      }
+    ],
+
+    "specialized": [
+      {
+        "id": "CL-3.12",
+        "name": "跨层审计检查",
+        "items": [
+          { "check": "请求参数: 前端发送的字段名/类型 vs 后端接受的字段名/类型",     "dims": ["D12"] },
+          { "check": "响应格式: 前端期望的字段 vs 后端实际返回的字段",               "dims": ["D12"] },
+          { "check": "枚举值: 前端使用的枚举值 vs 后端 Schema/Validator 允许的枚举值", "dims": ["D12"] },
+          { "check": "竞态保护: 所有数据获取 hook 是否有统一的竞态保护模式",          "dims": ["D25"] },
+          { "check": "上下文切换 (workspace/user) 时旧数据是否被正确丢弃",           "dims": ["D25"] },
+          { "check": "并发写入操作是否有乐观锁或幂等性保护",                         "dims": [] },
+          { "check": "创建的 blob URL 是否在 unmount 时 revoke",                     "dims": [] },
+          { "check": "HTTP 请求是否在 unmount 时通过 AbortController 取消",           "dims": [] },
+          { "check": "API 响应是否有运行时类型校验 (Zod/io-ts)",                      "dims": ["D12"] },
+          { "check": "是否有不安全的 as 类型断言绕过 TypeScript 保护",                "dims": ["D12"] },
+          { "check": "Application 层 Handler 是否通过 Domain Service 而非直接 Repository", "dims": ["D8"] }
+        ]
+      },
+      {
+        "id": "CL-3.13",
+        "name": "支付/金融系统专项检查",
+        "items": [
+          { "check": "CHECK 约束是否覆盖代码实际写入的所有枚举值",                                  "dims": ["D4"] },
+          { "check": "代码写入字段名是否与表定义完全一致 (amount vs amount_usd)",                    "dims": ["D4"] },
+          { "check": "积分数值是否都来自 TierService/system_configs (非硬编码)",                     "dims": [] },
+          { "check": "全局搜索硬编码数字 (50/100/500/1000) 是否为业务配置值",                        "dims": [] },
+          { "check": "Webhook handler 是否防止重放攻击 (idempotency_key / 事件去重)",                "dims": [] },
+          { "check": "积分操作 (发放/扣减) 是否有幂等保护",                                          "dims": [] },
+          { "check": "列出所有导致同一业务结果的路径 (如: 取消订阅 = admin取消 + webhook取消 + unpaid自动取消)", "dims": [] },
+          { "check": "每条路径是否执行了完整的副作用",                                                "dims": [] },
+          { "check": "退费处理是否区分不同原始交易类型 (积分购买退费 vs 订阅退费)",                    "dims": [] },
+          { "check": "订阅续期 4 条路径: 手动续期 / Stripe 自动续期 webhook / admin 手动操作 / 过期自动降级", "dims": [] },
+          { "check": "nullable 字段: 前后端对 null/undefined/空字符串的处理是否一致",                  "dims": ["D12"] },
+          { "check": "Stripe Customer 是否与系统用户绑定 (checkout 时传入 customer_id)",              "dims": [] },
+          { "check": "已有活跃订阅时是否拦截重复购买",                                                "dims": [] },
+          { "check": "Webhook 签名验证是否显式设置 tolerance",                                        "dims": [] },
+          { "check": "所有需要处理的 Stripe event 类型是否都有对应 handler",                          "dims": [] },
+          { "check": "Stripe API 调用是否在 async 环境中正确处理 (run_in_threadpool)",                "dims": [] },
+          { "check": "关键环境变量缺失时是否 fail-fast",                                              "dims": [] },
+          { "check": "涉及多表操作是否使用 RPC 保证原子性",                                           "dims": ["D3"] },
+          { "check": "缓存是否有 TTL 过期机制 (TierService._cache)",                                  "dims": ["D20"] },
+          { "check": "是否有定时任务检测数据异常",                                                    "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.14",
+        "name": "后端通用审计检查",
+        "items": [
+          { "check": "async 方法内是否有同步阻塞调用 (httpx.Client, time.sleep)",      "dims": [] },
+          { "check": "同步第三方 SDK (Stripe/OpenAI/FAL) 是否通过 run_in_threadpool 包装", "dims": [] },
+          { "check": "重试逻辑是否使用 asyncio.sleep 而非 time.sleep",                 "dims": [] },
+          { "check": "asyncio.gather() 是否使用 return_exceptions=True",               "dims": [] },
+          { "check": "asyncio.create_task() 是否保存引用防止 GC 回收",                 "dims": [] },
+          { "check": "Scheduler 任务是否使用独立 DB client",                            "dims": [] },
+          { "check": "Scheduler 任务是否有超时保护 (asyncio.wait_for)",                 "dims": [] },
+          { "check": "是否使用 Pydantic v2 语法 (model_config 替代 class Config)",      "dims": [] },
+          { "check": "datetime.utcnow() → datetime.now(timezone.utc)",                 "dims": [] },
+          { "check": "APScheduler 任务是否设置 max_instances=1",                        "dims": [] },
+          { "check": "分布式部署时定时任务是否有 Redis 分布式锁 (SETNX)",               "dims": [] },
+          { "check": "全局单例 lazy init 是否有 asyncio.Lock() 保护",                  "dims": [] },
+          { "check": "关键 secret 是否支持双 key 轮换窗口",                             "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.15",
+        "name": "前端专项审计检查",
+        "items": [
+          { "check": "render 函数体中是否直接调用 setState (应使用 useEffect)",          "dims": [] },
+          { "check": "useCallback/useMemo 依赖数组是否正确",                            "dims": [] },
+          { "check": "error 是否用 useState 存储 (useRef 不触发重渲染)",                "dims": [] },
+          { "check": "loading 状态在 early return 时是否正确重置",                       "dims": ["D13"] },
+          { "check": "模块级 cache/变量是否会跨用户/workspace 泄漏",                    "dims": [] },
+          { "check": "Zustand Store 是否使用 selector 订阅 (非 get() 反模式)",          "dims": ["D11"] },
+          { "check": "URL.createObjectURL() 是否在 unmount 时 revoke",                  "dims": [] },
+          { "check": "定时器 (setInterval/setTimeout) 是否在 useEffect cleanup 中清理",  "dims": [] },
+          { "check": "window.addEventListener 是否有对应的 removeEventListener",         "dims": [] },
+          { "check": "WebSocket/SSE 连接是否在 unmount 时关闭",                         "dims": [] },
+          { "check": "是否有 empty catch 块静默吞掉错误",                                "dims": [] },
+          { "check": "不可逆操作 (永久删除) 是否有确认对话框",                           "dims": [] },
+          { "check": "用户 ID 拼接 URL 时是否使用 encodeURIComponent",                  "dims": [] },
+          { "check": "console.log 调试输出是否清理 (使用 createLogger)",                 "dims": [] },
+          { "check": "sessionStorage/localStorage 访问是否包裹 try/catch",               "dims": [] },
+          { "check": "API 响应 Zod Schema 是否覆盖所有后端枚举值",                       "dims": ["D12"] }
+        ]
+      },
+      {
+        "id": "CL-3.16",
+        "name": "组件复杂度与拆分检查",
+        "items": [
+          { "check": "文件行数是否超过 300 行 (审视拆分)",                               "dims": [] },
+          { "check": "单组件 useState 数量是否超过 15 个",                               "dims": [] },
+          { "check": "单方法/函数是否超过 100 行",                                       "dims": [] },
+          { "check": "useCallback/useMemo 依赖数组是否超过 5 个",                        "dims": [] },
+          { "check": "是否存在 3+ 处 80%+ 相似的组件",                                   "dims": [] },
+          { "check": "请求/响应模型是否在多个文件重复定义",                               "dims": [] },
+          { "check": "一个 hook 是否同时管理过多职责 (应拆分)",                           "dims": [] },
+          { "check": "API 路由文件是否超过 12+ 端点 (考虑拆分)",                          "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.17",
+        "name": "输入校验检查",
+        "items": [
+          { "check": "limit 参数是否有上界 (le=100)",                                    "dims": ["D7"] },
+          { "check": "offset 参数是否有下界 (ge=0)",                                     "dims": ["D7"] },
+          { "check": "search/query 参数是否有 max_length (建议 200)",                    "dims": ["D7"] },
+          { "check": "ID 参数是否有 UUID 格式校验且所有端点一致",                         "dims": ["D7"] },
+          { "check": "email 是否使用 Pydantic EmailStr 或正则校验",                       "dims": ["D7"] },
+          { "check": "枚举参数 (role, status) 是否使用 Literal/Enum 类型",                "dims": ["D7"] },
+          { "check": "文件上传 Content-Length 检查后再 read() (防 DoS)",                  "dims": [] },
+          { "check": "MIME 类型验证是否配合 magic bytes 验证",                            "dims": [] },
+          { "check": "SVG 文件上传后是否通过 sanitizer 移除 script (存储型 XSS)",         "dims": ["D23"] },
+          { "check": "文件扩展名是否使用白名单校验",                                      "dims": [] },
+          { "check": "前端校验规则与后端是否一致",                                        "dims": ["D14"] }
+        ]
+      },
+      {
+        "id": "CL-3.18",
+        "name": "(已合并到 CL-3.6)",
+        "items": []
+      },
+      {
+        "id": "CL-3.19",
+        "name": "可观测性与监控检查",
+        "items": [
+          { "check": "所有 API 路由文件是否有 logger 实例",                               "dims": [] },
+          { "check": "错误日志是否包含上下文信息 (user_id, endpoint, 参数)",               "dims": [] },
+          { "check": "日志中 user_id/email 是否做部分遮蔽",                               "dims": ["D23"] },
+          { "check": "Sentry 事件是否脱敏 request_body / response_body",                  "dims": ["D23"] },
+          { "check": "api_logs/error_logs 表 request_body JSONB 是否入库前脱敏",          "dims": ["D23"] },
+          { "check": "Admin 写操作是否有审计日志",                                        "dims": [] },
+          { "check": "审计日志包含: 操作人/操作对象/操作类型/操作前后值",                   "dims": [] },
+          { "check": "是否使用 createLogger/logger.debug 替代 console.log",               "dims": [] },
+          { "check": "后端是否有 /health 端点",                                           "dims": [] },
+          { "check": "关键异步任务失败是否有告警",                                        "dims": [] },
+          { "check": "数据异常检测是否有定时任务",                                        "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-3.20",
+        "name": "软删除一致性检查",
+        "items": [
+          { "check": "使用了哪些软删除模式 (is_deleted+deleted_at vs status vs is_active)",  "dims": [] },
+          { "check": "同一业务域内是否统一一种模式",                                        "dims": [] },
+          { "check": "列表查询是否过滤 is_deleted=false",                                   "dims": [] },
+          { "check": "计数查询是否排除已删除记录",                                          "dims": [] },
+          { "check": "soft_delete 是否同时设置 is_deleted + deleted_at + recovery_expires_at", "dims": [] },
+          { "check": "硬删除的实体误删是否可恢复",                                          "dims": [] },
+          { "check": "FK 是 CASCADE 还是 SET NULL 策略是否统一",                             "dims": [] },
+          { "check": "SET NULL FK 删除后的孤儿记录是否有清理机制",                           "dims": [] },
+          { "check": "created_by / updated_by 等用户引用是否有 ON DELETE 规则",              "dims": [] },
+          { "check": "软删除清理脚本是否按依赖顺序处理 (先子表后父表)",                      "dims": [] }
+        ]
+      }
+    ],
+
+    "bestPractice": [
+      {
+        "id": "CL-4.1",
+        "name": "API 安全与设计",
+        "items": [
+          { "check": "BOLA/IDOR: 所有端点是否验证资源归属",                       "dims": ["D6"] },
+          { "check": "Broken Authentication: JWT 过期/刷新/吊销策略是否完整",      "dims": ["D6"] },
+          { "check": "Excessive Data Exposure: API 响应是否只返回必要字段",         "dims": [] },
+          { "check": "Rate Limiting: 所有端点是否有速率限制",                      "dims": [] },
+          { "check": "Mass Assignment: 是否限制客户端可写字段",                    "dims": ["D7"] },
+          { "check": "Security Misconfiguration: CORS/CSP/HTTPS 是否正确配置",     "dims": [] },
+          { "check": "错误响应格式是否统一 (统一 ErrorResponse schema)",            "dims": ["D5"] },
+          { "check": "HTTP 方法是否语义正确 (GET 无副作用, DELETE 幂等)",           "dims": [] },
+          { "check": "路由命名是否 RESTful 一致",                                  "dims": [] },
+          { "check": "Access-Control-Allow-Origin 是否为白名单 (非 *)",            "dims": [] },
+          { "check": "Access-Control-Allow-Credentials 与 Origin: * 是否互斥",    "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-4.2",
+        "name": "依赖管理与供应链安全",
+        "items": [
+          { "check": "npm audit / pip audit 是否定期执行",                         "dims": [] },
+          { "check": "是否使用 lockfile 锁定版本",                                 "dims": [] },
+          { "check": "是否有 Dependabot/Renovate 等自动更新工具",                  "dims": [] },
+          { "check": "核心框架版本是否与项目声明一致",                              "dims": [] },
+          { "check": "peerDependency 冲突是否已解决",                              "dims": [] },
+          { "check": "requirements.txt 中所有包是否固定版本范围",                   "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-4.3",
+        "name": "错误处理与韧性",
+        "items": [
+          { "check": "用户错误 (4xx) 和系统错误 (5xx) 是否正确区分",               "dims": ["D5"] },
+          { "check": "系统错误是否不泄漏内部堆栈/SQL 语句",                        "dims": ["D5"] },
+          { "check": "全局异常处理器是否覆盖所有异常类型",                          "dims": ["D5"] },
+          { "check": "外部服务调用是否有超时设置",                                  "dims": [] },
+          { "check": "重试逻辑是否使用指数回退",                                   "dims": [] },
+          { "check": "熔断器 (Circuit Breaker) 三态: Closed→Open→Half-Open + 自动恢复 cooldown", "dims": [] },
+          { "check": "重试是否只对幂等操作 (GET/PUT)",                              "dims": [] },
+          { "check": "DB 查询是否有全局超时保护",                                   "dims": [] },
+          { "check": "bare except: pass 是否已消除",                                "dims": [] },
+          { "check": "启动时是否验证所有外部依赖连接 (fail-fast)",                   "dims": [] },
+          { "check": "优雅关闭是否完整",                                            "dims": [] },
+          { "check": "Redis 不可用时是否 graceful fallback",                        "dims": [] },
+          { "check": "全局 JSON 请求体大小限制 (如 10MB)",                           "dims": [] },
+          { "check": "批量操作 API 的数组参数是否有最大长度校验",                    "dims": ["D7"] },
+          { "check": "文件上传是否分块读取验证大小",                                "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-4.4",
+        "name": "数据安全与隐私",
+        "items": [
+          { "check": "密码/token/API key 从不在日志/响应/前端中暴露",              "dims": ["D23"] },
+          { "check": "用户 PII (邮箱/姓名) 有脱敏策略",                            "dims": ["D23"] },
+          { "check": "前端不存储敏感信息在 localStorage",                           "dims": [] },
+          { "check": "Sentry before_send hook 脱敏 request/response body",         "dims": [] },
+          { "check": "用户上传文件名用 UUID 替代 (防 PII 泄露)",                    "dims": [] },
+          { "check": "所有 API 通信强制 HTTPS",                                    "dims": [] },
+          { "check": "Webhook 签名是否验证",                                        "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-4.5",
+        "name": "前端性能与 UX",
+        "items": [
+          { "check": "长列表是否使用虚拟化 (react-window/react-virtuoso)",          "dims": [] },
+          { "check": "图片是否使用 next/image 优化",                                "dims": [] },
+          { "check": "是否有不必要的全量重渲染",                                    "dims": [] },
+          { "check": "Bundle size 是否合理 (next/bundle-analyzer)",                "dims": [] },
+          { "check": "Error Boundary 是否覆盖关键页面区域",                         "dims": ["D13"] },
+          { "check": "网络失败是否有重试/降级 UI",                                  "dims": ["D13"] },
+          { "check": "乐观更新是否有回滚机制",                                      "dims": ["D25"] },
+          { "check": "表单提交是否有防重复点击",                                    "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-4.6",
+        "name": "SEO / GEO / AEO",
+        "items": [
+          { "check": "每页唯一 <title> (50-60 字符)",                              "dims": [] },
+          { "check": "每页 <meta name='description'> (120-160 字符)",              "dims": [] },
+          { "check": "<meta name='robots'> 正确配置",                               "dims": [] },
+          { "check": "<link rel='canonical'> 避免重复内容",                         "dims": [] },
+          { "check": "图片有 alt 属性",                                             "dims": [] },
+          { "check": "HTML 语义标签正确使用",                                       "dims": [] },
+          { "check": "标题层级正确 (唯一 h1, 依次 h2-h6)",                          "dims": [] },
+          { "check": "公开页面使用 Server Component / SSG / ISR",                   "dims": [] },
+          { "check": "通过 generateMetadata() 动态生成 title/description",          "dims": [] },
+          { "check": "有 app/sitemap.ts + app/robots.ts",                           "dims": [] },
+          { "check": "关键页面 LCP < 2.5s, CLS < 0.1",                             "dims": [] },
+          { "check": "有 Open Graph + Twitter Card meta 标签",                      "dims": [] },
+          { "check": "有 JSON-LD 结构化数据 (Product/FAQPage/Organization)",        "dims": [] },
+          { "check": "关键内容以清晰段落+列表呈现 (AI 引擎易提取)",                 "dims": [] },
+          { "check": "关键问题以 'What is X?' / 'How to X?' 格式呈现 (AEO)",        "dims": [] },
+          { "check": "多语言页面使用 hreflang",                                     "dims": ["D22"] },
+          { "check": "已注册 Google Search Console + Bing Webmaster Tools",         "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-4.7",
+        "name": "跨平台兼容性",
+        "items": [
+          { "check": "iOS: Safari 100vh 使用 CSS dvh 或 JS 替代",                  "dims": ["D16"] },
+          { "check": "iOS: 软键盘弹出时布局正常; Safe Area 使用 env()",              "dims": ["D16"] },
+          { "check": "iOS: input font-size ≥16px (防自动缩放)",                     "dims": ["D16"] },
+          { "check": "Android: 软键盘弹出使用 visualViewport API",                  "dims": ["D16"] },
+          { "check": "Android: 返回键行为合理",                                     "dims": [] },
+          { "check": "Windows: 高 DPI 缩放布局正常",                                "dims": ["D16"] },
+          { "check": "Mobile: 触摸目标 ≥ 44x44px",                                 "dims": ["D16"] },
+          { "check": "Mobile: 下拉刷新不与浏览器原生冲突",                          "dims": [] },
+          { "check": "Tablet: iPad Split View / Slide Over 正常显示",               "dims": ["D16"] },
+          { "check": "Desktop: 超宽屏 (>1920px) 有 max-width 约束",                "dims": ["D16"] },
+          { "check": "Desktop: 键盘导航 (Tab/Shift+Tab/Enter/Escape) 完整可用",     "dims": [] },
+          { "check": "折叠屏: 展开/折叠切换时布局自动适配",                          "dims": ["D16"] },
+          { "check": "Safari: backdrop-filter 加 -webkit- 前缀",                    "dims": [] },
+          { "check": "Safari: structuredClone polyfill (15.4+)",                    "dims": [] },
+          { "check": "Safari: 日期解析使用 ISO 8601",                               "dims": [] },
+          { "check": "Firefox: scrollbar 自定义兼容",                               "dims": [] },
+          { "check": "browserslist 定义支持范围",                                    "dims": [] },
+          { "check": "CSS autoprefixer 根据 browserslist 自动添加前缀",              "dims": [] },
+          { "check": "字体加载策略使用 font-display: swap",                          "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-4.8",
+        "name": "测试覆盖",
+        "items": [
+          { "check": "Entity to_dict/from_dict 100% 覆盖",                         "dims": [] },
+          { "check": "API 集成测试验证 HTTP 状态码 (200/400/422)",                  "dims": [] },
+          { "check": "业务异常路径有测试",                                          "dims": [] },
+          { "check": "bug 修复附带回归测试",                                        "dims": [] },
+          { "check": "覆盖率 ≥60% (目标 75%+)",                                    "dims": [] }
+        ]
+      }
+    ],
+
+    "techStack": [
+      {
+        "id": "CL-5.1", "name": "FastAPI",
+        "items": [
+          { "check": "路由函数 async def",              "dims": [] },
+          { "check": "Pydantic v2 模型",                "dims": [] },
+          { "check": "依赖注入用 Depends()",             "dims": [] },
+          { "check": "Background Tasks 用于非关键异步",  "dims": [] },
+          { "check": "CORS 配置正确",                   "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-5.2", "name": "Next.js (App Router)",
+        "items": [
+          { "check": "Server/Client Components 正确划分",  "dims": [] },
+          { "check": "'use client' 只在需要时添加",        "dims": [] },
+          { "check": "Metadata API 用于 SEO",              "dims": [] },
+          { "check": "动态路由参数类型安全",               "dims": [] },
+          { "check": "Image 组件用于图片优化",             "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-5.3", "name": "Supabase",
+        "items": [
+          { "check": "RPC 用于复杂事务",                   "dims": [] },
+          { "check": "Row Level Security (RLS) 策略",      "dims": [] },
+          { "check": "实时订阅正确清理",                    "dims": [] },
+          { "check": "Storage 桶权限配置",                  "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-5.4", "name": "Zustand",
+        "items": [
+          { "check": "按领域拆分 Store",                    "dims": ["D11"] },
+          { "check": "精确订阅 (selector 函数)",             "dims": ["D11"] },
+          { "check": "异步 action 有 loading/error 状态",   "dims": ["D13"] },
+          { "check": "DevTools 中间件 (开发环境)",           "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-5.5", "name": "Stripe",
+        "items": [
+          { "check": "Webhook 签名验证",                    "dims": [] },
+          { "check": "幂等键处理",                           "dims": [] },
+          { "check": "价格 ID 通过配置管理 (非硬编码)",       "dims": [] },
+          { "check": "退款/争议处理流程",                    "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-5.6", "name": "Fabric.js",
+        "items": [
+          { "check": "Canvas 对象生命周期管理",              "dims": [] },
+          { "check": "事件监听正确清理",                     "dims": [] },
+          { "check": "大画布性能优化",                       "dims": [] },
+          { "check": "序列化/反序列化一致性",                "dims": [] }
+        ]
+      }
+    ],
+
+    "deployment": [
+      {
+        "id": "CL-6.1", "name": "Railway (后端)",
+        "items": [
+          { "check": "环境变量完整",       "dims": [] },
+          { "check": "健康检查端点",       "dims": [] },
+          { "check": "优雅关闭处理",       "dims": [] },
+          { "check": "日志聚合配置",       "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-6.2", "name": "Vercel (前端)",
+        "items": [
+          { "check": "构建优化 (tree-shaking)",                 "dims": [] },
+          { "check": "环境变量区分 NEXT_PUBLIC_ 前缀",          "dims": [] },
+          { "check": "Edge/Serverless 函数超时配置",             "dims": [] },
+          { "check": "ISR/SSG 缓存策略",                        "dims": [] }
+        ]
+      },
+      {
+        "id": "CL-6.3", "name": "CI/CD",
+        "items": [
+          { "check": "构建通过后才能合并",                       "dims": [] },
+          { "check": "测试通过后才能部署",                       "dims": [] },
+          { "check": "前后端 Feature Key 一致性检查",            "dims": [] },
+          { "check": "数据库迁移在部署前执行",                   "dims": [] }
+        ]
+      }
+    ]
+  },
+
+  "severity": [
+    { "level": "P0", "name": "Critical", "definition": "功能完全不可用或数据损坏风险",         "examples": "路径标识符错误; HTTP Method 错误; 数据库字段不匹配" },
+    { "level": "P1", "name": "High",     "definition": "功能部分受损或安全隐患",               "examples": "参数传递但后端不处理; 缺失端点; 认证缺失" },
+    { "level": "P2", "name": "Medium",   "definition": "非阻塞但需改进",                       "examples": "文档不一致; 代码风格不统一; 缺少错误处理" },
+    { "level": "P3", "name": "Low",      "definition": "建议性改进",                            "examples": "性能优化; 代码简化; 注释完善" }
+  ],
+
+  "executionRounds": [
+    { "round": "R1", "modules": "Auth + Users + Configs",                       "rationale": "基础设施层，被所有模块依赖" },
+    { "round": "R2", "modules": "Tiers + Feature Flags + Billing",              "rationale": "权限与计费层" },
+    { "round": "R3", "modules": "Content (Articles/Themes/Assets)",             "rationale": "核心业务层" },
+    { "round": "R4", "modules": "Editor + AI",                                  "rationale": "编辑器层" },
+    { "round": "R5", "modules": "Dashboard + Analytics + Notifications",         "rationale": "展示层" },
+    { "round": "R6", "modules": "Admin + Operations + Moderation",               "rationale": "管理层" }
+  ],
+
+  "fixPatterns": [
+    {
+      "id": "F.1", "category": "安全类",
+      "patterns": [
+        { "name": "SQL 参数化",  "scenario": "字符串拼接 SQL",        "fix": "参数化查询或 ORM" },
+        { "name": "XSS 防护",   "scenario": "用户输入直接输出",       "fix": "html.escape() 编码" },
+        { "name": "日志脱敏",   "scenario": "日志含敏感信息",         "fix": "自动脱敏 password/token/email" },
+        { "name": "认证加固",   "scenario": "端点缺少 auth",          "fix": "添加 require_admin / get_current_user" },
+        { "name": "速率限制",   "scenario": "无频率控制",             "fix": "添加 rate_limit 中间件" }
+      ]
+    },
+    {
+      "id": "F.2", "category": "架构类",
+      "patterns": [
+        { "name": "DDD 迁移",   "scenario": "Router 直接调用 Repository", "fix": "添加 Service 层" },
+        { "name": "Entity 包装", "scenario": "返回 dict",                 "fix": "创建 Entity + from_dict/to_dict" },
+        { "name": "分页统一",   "scenario": "page+limit 混用",            "fix": "统一为 offset+limit" },
+        { "name": "事务包装",   "scenario": "多步操作无原子性",            "fix": "RPC 或 transaction 包装" },
+        { "name": "依赖注入",   "scenario": "硬编码依赖",                 "fix": "Depends() 或 Container" }
+      ]
+    },
+    {
+      "id": "F.3", "category": "数据一致性",
+      "patterns": [
+        { "name": "字段名对齐", "scenario": "前后端字段名不匹配", "fix": "以后端为准修改前端映射" },
+        { "name": "类型对齐",   "scenario": "slug vs id 混用",    "fix": "以数据库定义为准统一" },
+        { "name": "枚举对齐",   "scenario": "前后端枚举值不一致", "fix": "建立共享枚举定义" },
+        { "name": "参数对齐",   "scenario": "查询参数名不匹配",   "fix": "以 API 文档为准对齐" },
+        { "name": "状态码对齐", "scenario": "前端未处理特定状态码", "fix": "补充错误处理分支" }
+      ]
+    },
+    {
+      "id": "F.4", "category": "前端类",
+      "patterns": [
+        { "name": "Store 拆分",   "scenario": "单一大 Store",         "fix": "按领域拆分为独立 Store" },
+        { "name": "状态完整性",   "scenario": "缺少 loading/error",   "fix": "补充三态处理" },
+        { "name": "类型迁移",     "scenario": ".js/.jsx 文件",        "fix": "迁移为 .ts/.tsx" },
+        { "name": "竞态处理",     "scenario": "快速操作状态混乱",     "fix": "AbortController + 版本号" },
+        { "name": "响应式补全",   "scenario": "移动端不可用",         "fix": "Mobile-First 重构" }
+      ]
+    },
+    {
+      "id": "F.5", "category": "性能类",
+      "patterns": [
+        { "name": "并发 I/O",   "scenario": "顺序 await 多个请求",   "fix": "asyncio.gather()" },
+        { "name": "线程分流",   "scenario": "CPU 密集阻塞事件循环",  "fix": "run_in_threadpool()" },
+        { "name": "索引优化",   "scenario": "慢查询",                "fix": "添加数据库索引" },
+        { "name": "缓存策略",   "scenario": "重复查询",              "fix": "添加适当缓存层" },
+        { "name": "批量操作",   "scenario": "N+1 查询",              "fix": "批量查询 + 内存关联" }
+      ]
+    }
+  ],
+
+  "qualityScoring": [
+    { "dimension": "文档覆盖率", "weight": 0.15, "scale": "0: 无文档 → 5: 完整覆盖所有端点" },
+    { "dimension": "API 对齐度", "weight": 0.25, "scale": "0: 路径/方法错误 → 5: 100% 匹配" },
+    { "dimension": "前端覆盖率", "weight": 0.20, "scale": "0: 无调用 → 5: 所有端点有 UI" },
+    { "dimension": "DDD 合规性", "weight": 0.15, "scale": "0: Router 直调 DB → 5: 完整分层" },
+    { "dimension": "安全合规性", "weight": 0.15, "scale": "0: SQL 注入风险 → 5: 全面防护" },
+    { "dimension": "测试覆盖率", "weight": 0.10, "scale": "0: 无测试 → 5: ≥75% 覆盖" }
+  ]
+}
