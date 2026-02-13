@@ -1,6 +1,6 @@
-# Admin 功能全面审计报告 v2.1
+# Admin 功能全面审计报告 v2.2
 
-> **审计日期**: 2026-02-12 (v1.0) → 2026-02-13 (v2.0) → 2026-02-13 (v2.1 整合修订)
+> **审计日期**: 2026-02-12 (v1.0) → 2026-02-13 (v2.0) → 2026-02-13 (v2.1 整合修订) → 2026-02-13 (v2.2 数据校验)
 > **审计标准**: `audit-standard.md` v1.2 (25 维度 × 36 检查清单 × 287 检查项)
 > **审计范围**: 21 个后端 Router + 全部前端 Admin 页面 + 跨层一致性
 > **审计方法**: 4 轮并行 Agent 审计 (后端 Batch1-2 / Batch3-4 / 前端 / 跨层 D17-D25)
@@ -47,7 +47,7 @@
 | Webhook重试 (webhooks_retry) | 2 | 2 | 100% | 🔴 无文档 |
 | 用户监控 (user_creation_monitoring) | 5 | 3 | 60% | 🔴 无文档 |
 | 日志 (logs) | 5 | 4 | 80% | 🔴 无文档 |
-| **合计** | **~195** | **~142** | **~73%** | **~35%** |
+| **合计** | **190** | **142** | **75%** | **~35%** |
 
 ### 1.3 问题统计汇总
 
@@ -69,7 +69,7 @@
 - **文件**: `api/admin/asset_categories.py` ↔ 前端 `admin/content`
 - **问题**: 后端用 `slug` 标识资源，前端用 `id`；PUT vs PATCH 不匹配；字段名全错 (type vs asset_type, is_active vs is_visible/is_featured)
 - **影响**: 所有 CRUD 操作都会失败
-- **维度**: D1 + D5 + D17
+- **维度**: D1 + D17
 - **修复**: 统一标识符 + HTTP 方法 + 字段映射
 - **详见**: 04-audit-staticpages-categories.md §B
 
@@ -93,7 +93,7 @@
 - **文件**: `api/admin/ai_models.py` → PUT /ai/models/config/admin
 - **问题**: 端点路由已注册，但实现为 TODO 占位符
 - **影响**: 调用返回错误或空响应
-- **维度**: D2
+- **维度**: D1
 - **修复**: 实现或删除该端点
 - **详见**: 08-audit-ai-overrides.md §B
 
@@ -199,17 +199,24 @@
 
 ### H6: Metrics 全部 7 端点无前端
 - **文件**: `api/admin/metrics.py` — daily/monthly/retention/funnel/errors/dau-trend/refresh
-- **问题**: 完整后端实现 + Pydantic 模型，但零前端集成
+- **问题**: 完整后端实现 + Pydantic 模型 + Container DI，但零前端集成
+- **影响**: 后端投入浪费，DAU/MAU/留存等关键指标无可视化
 - **维度**: D9
+- **详见**: 07-audit-notifications-analytics.md §C
 
 ### H7: Events 全部 5 端点无前端
-- **文件**: `api/admin/events.py`
+- **文件**: `api/admin/events.py` — events/stats/aggregated/{stat_type}/range/run
+- **问题**: 事件查询 + 聚合统计 + 手动触发后端完整实现，但零前端集成
+- **影响**: 后端投入浪费，用户行为事件数据无法在 Admin 查看
 - **维度**: D9
+- **详见**: 07-audit-notifications-analytics.md §D
 
 ### H8: Stats 10 个高级端点无前端
-- **文件**: `api/admin/stats.py`
+- **文件**: `api/admin/stats.py` — tier-distribution/tier-activity/subscription-events/page-views 等
+- **问题**: 8/18 端点有前端调用，剩余 10 个高级聚合端点无前端集成
 - **影响**: 大量数据洞察能力未暴露 (tier-distribution, tier-activity, returning-users 等)
 - **维度**: D9
+- **详见**: 07-audit-notifications-analytics.md §B
 
 ### H9: 前端约 20 个空 catch 块
 - **文件**: 多个前端 Admin 组件 (AssetCategoriesPanel, MarketplaceModerationPanel, StaticPagesPanel 等)
@@ -263,7 +270,11 @@
 - **建议**: 按功能拆分为子组件 (表格、表单、对话框)
 
 ### M2: 前端残留 console.log
+- **文件**: `adminApiClient.ts`, 多个 Admin 组件
+- **问题**: 前端代码中存在裸 `console.log()` / `console.error()` 调用，违反前端日志规范 (应使用 Logger 类)
+- **影响**: 生产环境日志信息泄露，无法统一收集/上报错误
 - **维度**: CL-3.15
+- **修复**: 统一替换为 Logger 类调用
 
 ### M3: 无并发安全/乐观锁机制
 - **问题**: 后端更新操作无 version/etag 字段，多管理员同时修改无冲突检测
@@ -348,7 +359,7 @@
 | **user_creation_monitoring** | **🔴** | **❌ 直接 Service** | 未迁移 | **C10 全面违规** |
 | logs | ✅ | ✅ | v3.29 | — |
 
-**DDD 完全合规率**: 17/23 (74%) — 6 个模块需要修复/迁移
+**DDD 完全合规率**: 19/23 (83%) — 4 个模块需要修复/迁移 (tiers ⚠️, feature_flags ⚠️, overrides 🔴, user_creation_monitoring 🔴)
 **Container DI 合规率**: 19/23 (83%) — 4 个模块需要迁移
 
 ### 7.2 安全配置
@@ -430,14 +441,20 @@
 | 2 | H7: Events Browser 前端 | 6h |
 | 3 | H8: Stats 高级聚合前端 | 8h |
 | 4 | M1: 超大前端文件拆分 (Top 5) | 8h |
-| 5 | M3: 乐观锁机制 | 4h |
+| 5 | M2: 前端 console.log 替换为 Logger | 2h |
+| 6 | M3: 乐观锁机制 | 4h |
+| 7 | M5: subscriptions.py 同步调用排查 | 2h |
+| 8 | M6: config.py batch_update 事务保护 | 2h |
+| 9 | M7: Stats vs Metrics 功能重叠整理 | 4h |
 
-### Phase 4: 文档补全 (P2)
+### Phase 4: 文档补全 + 低优先级 (P2-P3)
 
 | # | 内容 | 工作量 |
 |---|------|:---:|
-| 1 | 新建 8 份 v3 文档 | 16h |
-| 2 | 扩展 6 份骨架 v3 文档 | 12h |
+| 1 | M4: 新建 8 份 v3 文档 | 16h |
+| 2 | M4: 扩展 6 份骨架 v3 文档 | 12h |
+| 3 | L1: Router 端点 docstring 补全 | 2h |
+| 4 | L2: 前端组件 loading 骨架屏 | 4h |
 
 ---
 
@@ -452,7 +469,7 @@
 | P2 数量 | 未统计 | 8 | 新增维度 |
 | P3 数量 | 未统计 | 2 | 新增维度 |
 | 审计维度 | D1-D8 为主 | D1-D25 全覆盖 | 扩展到跨层审计 |
-| DDD 合规率 | 90% (19/21) | 74% (17/23) | 更严格标准 (含 DI 模式检查) |
+| DDD 合规率 | 90% (19/21) | 83% (19/23) | 更严格标准 (含 DI 模式检查) |
 
 新增审计维度 (v2.0): D17 (参数一致性→C8), D18 (错误链路→C9), D19 (批量原子性→H10), D20 (并发安全→M3), D22 (鉴权→H12), D23 (日志→H11), D24 (CRUD 完整性→C7), D25 (性能→H13)
 
@@ -466,6 +483,18 @@
 - **统一章节编号**: 全文使用阿拉伯数字
 - **消除 v1.0 编号映射注释**: 移除 "(H2→H4)" 等干扰信息
 - **总数调整**: P1 从 14 降为 13, P2 从 8 降为 7, 总计 34→32
+
+### v2.1 → v2.2 变更 (2026-02-13)
+
+- **修正端点合计**: ~195 → 190 (精确求和 23 个模块)，前端调用 ~142，对齐率 ~75%
+- **修正 DDD 合规率**: 17/23 (74%) → 19/23 (83%)，6→4 个模块需修复 (逐行复核 §7.1 表格)
+- **修正 C1 维度**: D1+D5+D17 → D1+D17 (asset_categories DDD/DI 均合规，D5 不适用)
+- **修正 C4 维度**: D2 → D1 (占位符为功能完整性问题，非文档覆盖问题，与 08-audit 源文件对齐)
+- **补充 H6/H7/H8**: 添加详见引用 (07-audit-notifications-analytics.md §C/D/B)
+- **补充 H7 描述**: 从仅 2 行扩展为完整问题描述 (文件/问题/影响/维度/详见)
+- **补充 M2 描述**: 从仅 1 行扩展为完整描述 (文件/问题/影响/维度/修复)
+- **补全路线图**: Phase 3 新增 M2/M5/M6/M7；Phase 4 新增 L1/L2
+- **修正 v2.0 日志**: DDD 合规率 74% (17/23) → 83% (19/23)
 
 ---
 
@@ -487,6 +516,6 @@
 
 ---
 
-**审计完成 (v2.1)**。共 **10 个 P0** / **13 个 P1** / **7 个 P2** / **2 个 P3** = **32 个问题**。
+**审计完成 (v2.2)**。共 **10 个 P0** / **13 个 P1** / **7 个 P2** / **2 个 P3** = **32 个问题**。
 
 Phase 1 的 10 个 P0 中有 3 个可在 1 小时内修复 (C4/C5/C6)。建议从这 3 个开始启动修复。
