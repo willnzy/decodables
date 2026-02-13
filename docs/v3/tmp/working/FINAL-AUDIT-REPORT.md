@@ -1,6 +1,6 @@
-# Admin 功能全面审计报告 v2.3
+# Admin 功能全面审计报告 v2.4
 
-> **审计日期**: 2026-02-12 (v1.0) → 2026-02-13 (v2.0→v2.2) → 2026-02-13 (v2.3 代码验证修订)
+> **审计日期**: 2026-02-12 (v1.0) → 2026-02-13 (v2.0→v2.3) → 2026-02-13 (v2.4 深度代码验证修订)
 > **审计标准**: `audit-standard.md` v1.2 (25 维度 × 36 检查清单 × 287 检查项)
 > **审计范围**: 21 个后端 Router + 全部前端 Admin 页面 + 跨层一致性
 > **审计方法**: 4 轮并行 Agent 审计 (后端 Batch1-2 / Batch3-4 / 前端 / 跨层 D17-D25)
@@ -30,16 +30,16 @@
 | Feature Flags | 9 | 8 | 89% | ✅ |
 | 系统运维 (system) | 12 | 12 | 100% | ✅ |
 | 主题 (themes) | 13 | 13 | 100% | 🟡 |
-| 文章 (articles) | 10 | 8 | 80% | 🟡 |
+| 文章 (articles) | 7 | 7 | 100% | 🟡 |
 | 静态页面 (static_pages) | 7 | 7 | 100% | 🟡 |
 | 资产分类 (asset_categories) | 7 | 5 | 71% | 🔴 |
 | 内容审核 (moderation) | 10 | 10 | 100% | ✅ |
 | 营销活动 (campaigns) | 8 | 8 | 100% | 🔴 无文档 |
 | 实验 (experiments) | 14 | 14 | 100% | 🔴 无文档 |
 | 通知 (notifications) | 11 | 1 | 9% | 🔴 无文档 |
-| 统计 (stats) | 18 | 8 | 44% | 🔴 无文档 |
-| 指标 (metrics) | 7 | 0 | 0% | 🔴 无文档 |
-| 事件 (events) | 5 | 0 | 0% | 🔴 无文档 |
+| 统计 (stats) | 18 | 18 | 100% | 🔴 无文档 |
+| 指标 (metrics) | 7 | 7 | 100% | 🔴 无文档 |
+| 事件 (events) | 5 | 5 | 100% | 🔴 无文档 |
 | AI Insights (ai) | 5 | 5 | 100% | ✅ |
 | AI Models (ai_models) | 8 | 7 | 88% | 🔴 |
 | Overrides (overrides) | 3 | 0 | 0% | 🟡 v2有 |
@@ -47,19 +47,19 @@
 | Webhook重试 (webhooks_retry) | 2 | 2 | 100% | 🔴 无文档 |
 | 用户监控 (user_creation_monitoring) | 5 | 3 | 60% | 🔴 无文档 |
 | 日志 (logs) | 5 | 4 | 80% | 🔴 无文档 |
-| **合计** | **190** | **142** | **75%** | **~35%** |
+| **合计** | **187** | **163** | **87%** | **~35%** |
 
 ### 1.3 问题统计汇总
 
 | 严重度 | 数量 | 说明 |
 |--------|:---:|------|
 | 🔴 P0 (Critical) | **8** | 功能不可用 / 运行时错误 / 安全漏洞 |
-| 🟡 P1 (High) | **16** | 功能降级 / 架构违规 / 一致性缺失 |
-| 🟢 P2 (Medium) | **8** | 代码质量 / 文档缺失 / 优化建议 |
+| 🟡 P1 (High) | **13** | 功能降级 / 架构违规 / 一致性缺失 |
+| 🟢 P2 (Medium) | **7** | 代码质量 / 文档缺失 / 优化建议 |
 | ⚪ P3 (Low) | **2** | 微小改进 |
-| **总计** | **34** | |
+| **总计** | **30** | |
 
-> v2.3 变化: 代码验证后调整优先级 (C3/C5/C9 降级 P1, H5 升级 P0)，新增 H14/M8，总计 32→34
+> v2.4 变化: 深度代码验证删除 H6/H7/H8 (前端实际完整) + 删除 M5 (代码无同步阻塞证据)，修正 §1.2 端点统计
 
 ---
 
@@ -207,26 +207,14 @@
 
 ### ~~H5~~: → 升级为 C11 (P0)，见 §2
 
-### H6: Metrics 全部 7 端点无前端
-- **文件**: `api/admin/metrics.py` — daily/monthly/retention/funnel/errors/dau-trend/refresh
-- **问题**: 完整后端实现 + Pydantic 模型 + Container DI，但零前端集成
-- **影响**: 后端投入浪费，DAU/MAU/留存等关键指标无可视化
-- **维度**: D9
-- **详见**: 07-audit-notifications-analytics.md §C
+### ~~H6~~: ❌ v2.4 删除 — Metrics 前端实际完整
+> **删除理由**: 代码验证发现 `analytics/_lib/api.ts` 包含全部 7 个 Metrics API 调用，`_hooks/useMetrics.ts` 提供 7 个 Hook，`_components/metrics/MetricsPanel.tsx` + `DailyMetricsTable.tsx` + `RetentionMatrix.tsx` + `DAUTrendChart.tsx` 四个组件完整实现。通过 `analytics/page.tsx` Tab 2 ("metrics") 路由，管理员可正常访问。
 
-### H7: Events 全部 5 端点无前端
-- **文件**: `api/admin/events.py` — events/stats/aggregated/{stat_type}/range/run
-- **问题**: 事件查询 + 聚合统计 + 手动触发后端完整实现，但零前端集成
-- **影响**: 后端投入浪费，用户行为事件数据无法在 Admin 查看
-- **维度**: D9
-- **详见**: 07-audit-notifications-analytics.md §D
+### ~~H7~~: ❌ v2.4 删除 — Events 前端实际完整
+> **删除理由**: `analytics/_lib/api.ts` 包含全部 5 个 Events API 调用，`_hooks/useEvents.ts` 提供 5 个 Hook，`_components/events/EventsPanel.tsx` (334 行) 完整实现事件列表 + 统计 + 聚合控制。通过 `analytics/page.tsx` Tab 3 ("events") 路由，管理员可正常访问。
 
-### H8: Stats 10 个高级端点无前端
-- **文件**: `api/admin/stats.py` — tier-distribution/tier-activity/subscription-events/page-views 等
-- **问题**: 8/18 端点有前端调用，剩余 10 个高级聚合端点无前端集成
-- **影响**: 大量数据洞察能力未暴露 (tier-distribution, tier-activity, returning-users 等)
-- **维度**: D9
-- **详见**: 07-audit-notifications-analytics.md §B
+### ~~H8~~: ❌ v2.4 删除 — Stats 前端实际完整
+> **删除理由**: `analytics/_lib/api.ts` 包含全部 18 个 Stats API 调用 (非原称的 8 个)，`_hooks/useStats.ts` 提供 18 个 Hook，`_components/stats/` 下有 `StatsDashboard.tsx` + `KPICards.tsx` + `UserGrowthChart.tsx` + `RevenueChart.tsx` + `TierDistributionChart.tsx` + `CreditUsageChart.tsx` + `ConversionFunnel.tsx` 七个组件。通过 `analytics/page.tsx` Tab 1 ("stats") 路由，管理员可正常访问。
 
 ### H9: 前端约 40 个空 catch 块
 - **文件**: 多个前端 Admin 组件 (AssetCategoriesPanel, MarketplaceModerationPanel, StaticPagesPanel 等)
@@ -270,6 +258,7 @@
 - **详见**: 03-audit-themes-articles.md §B
 
 > **关于 C3/C5/C9 降级**: 这三个问题已标注在 §2 原位，但其优先级已从 P0 降级为 P1。新编号 H15/H16/H17，详细降级理由见各条目。
+> **关于 H6/H7/H8 删除 (v2.4)**: 代码验证证伪"无前端"结论，详见各条目删除理由。
 
 ---
 
@@ -304,19 +293,18 @@
 - **问题**: 约 95 个端点完全无文档，需新建 8 份 + 扩展 6 份 v3 文档
 - **维度**: D2
 
-### M5: subscriptions.py 同步调用隐患
-- **问题**: 部分 Stripe 交互可能存在同步阻塞
-- **维度**: D3 + CL-4.1
+### ~~M5~~: ❌ v2.4 删除 — 代码验证无同步阻塞证据
+> **删除理由**: subscriptions.py (217 行) 所有端点均 `async def`，Service 层 Stripe 交互全部已 await，未发现同步阻塞证据。
 
-### M6: config.py 批量更新无事务保护
+### M5: config.py 批量更新无事务保护
 - **问题**: batch_update_configs 多个更新非原子操作
 - **维度**: D19
 
-### M7: Stats vs Metrics 功能重叠
+### M6: Stats vs Metrics 功能重叠
 - **问题**: retention/funnel 在 stats.py 和 metrics.py 两处均有类似端点，增加维护成本
 - **维度**: D1
 
-### M8: tasks_mgmt 前端 stub 函数无后端对应 🆕 *v2.3 新增*
+### M7: tasks_mgmt 前端 stub 函数无后端对应
 - **文件**: 前端 tasks 管理组件
 - **问题**: 前端定义了 `cancelTask()` / `retryTask()` stub 函数，但后端无对应 cancel/retry 端点
 - **影响**: 按钮存在但点击无效 (若已绑定到 UI)
@@ -344,6 +332,9 @@
 | AI Insights (ai) | 9.5/10 | 三维度 100% 完整对齐 — Admin 中唯一 |
 | 配置管理 (config) | 9/10 | API→前端→文档 100% 对齐，Container DI ✅ |
 | 系统运维 (system) | 9/10 | 12 端点全部对齐，结构清晰 |
+| 统计 (stats) | 9/10 | 18 端点 100% 前端对齐 + 7 组件 (缺文档) ⚡ *v2.4 升级* |
+| 指标 (metrics) | 9/10 | 7 端点 100% 前端对齐 + 4 组件 (缺文档) ⚡ *v2.4 升级* |
+| 事件 (events) | 8.5/10 | 5 端点 100% 前端对齐 + EventsPanel 334 行 (缺文档) ⚡ *v2.4 升级* |
 | Webhook 重试 | 9/10 | 2 端点完整 (缺文档) |
 | 内容审核 (moderation) | 8.8/10 | 10 端点 100% 前端调用 |
 | 营销活动 (campaigns) | 8/10 | 8 端点 100% 前端调用 (缺文档) |
@@ -460,20 +451,16 @@
 | 12 | H12: RBAC 设计 (方案阶段) | 4h |
 | 13 | H13: N+1 优化 + 分页限制 | 3h |
 
-### Phase 3: 功能完善 (P1-P2 — 1-2 周)
+### Phase 3: 功能完善 (P2 — 1-2 周)
 
 | # | 问题 | 工作量 |
 |---|------|:---:|
-| 1 | H6: Metrics Dashboard 前端 | 8h |
-| 2 | H7: Events Browser 前端 | 6h |
-| 3 | H8: Stats 高级聚合前端 | 8h |
-| 4 | M1: 超大前端文件拆分 (Top 5) | 8h |
-| 5 | M2: 前端 console.log 替换为 Logger | 2h |
-| 6 | M3: 乐观锁机制 | 4h |
-| 7 | M5: subscriptions.py 同步调用排查 | 2h |
-| 8 | M6: config.py batch_update 事务保护 | 2h |
-| 9 | M7: Stats vs Metrics 功能重叠整理 | 4h |
-| 10 | M8: tasks_mgmt cancelTask/retryTask 实现 | 2h |
+| 1 | M1: 超大前端文件拆分 (Top 5) | 8h |
+| 2 | M2: 前端 console.log 替换为 Logger | 2h |
+| 3 | M3: 乐观锁机制 | 4h |
+| 4 | M5: config.py batch_update 事务保护 | 2h |
+| 5 | M6: Stats vs Metrics 功能重叠整理 | 4h |
+| 6 | M7: tasks_mgmt cancelTask/retryTask 实现 | 2h |
 
 ### Phase 4: 文档补全 + 低优先级 (P2-P3)
 
@@ -543,6 +530,26 @@
   - H9: 空 catch 块数量 ~20→~40 (代码 grep 精确计数)
 - **统计调整**: P0: 10→8, P1: 13→16, P2: 7→8, 总计: 32→34
 
+### v2.3 → v2.4 变更 (2026-02-13)
+
+**方法论升级**: 深度代码验证 — 扩展到 P2 级问题 + §1.2 端点统计 + §6 模块评分的逐一代码核实
+
+- **3 项 P1 删除** (代码验证证伪原审计结论):
+  - ~~H6~~: Metrics "无前端" — 实际有 7 个 API + 7 Hook + MetricsPanel 等 4 组件，通过 analytics/page.tsx Tab 路由完整可用
+  - ~~H7~~: Events "无前端" — 实际有 5 个 API + 5 Hook + EventsPanel (334 行)，通过 analytics/page.tsx Tab 路由完整可用
+  - ~~H8~~: Stats "10 端点无前端" — 实际全部 18 个端点有 API + Hook + StatsDashboard 等 7 组件，通过 analytics/page.tsx Tab 路由完整可用
+- **1 项 P2 删除** (代码验证无证据):
+  - ~~M5~~: subscriptions.py 同步调用 — 所有端点 async def，Service 层 Stripe 交互全部 await，无同步阻塞证据
+- **§1.2 端点统计修正** (4 处):
+  - articles.py 端点: 10→7 (实际 @router 装饰器计数)
+  - stats 前端调用: 8→18 (analytics/_lib/api.ts 全部 18 个 wrapper)
+  - metrics 前端调用: 0→7 (7 个完整 wrapper + useMetrics hook)
+  - events 前端调用: 0→5 (5 个完整 wrapper + useEvents hook)
+  - 合计: 端点 190→187, 前端调用 142→163, 对齐率 75%→87%
+- **§6 新增 3 个表现良好模块**: stats 9/10, metrics 9/10, events 8.5/10
+- **M 系列重编号**: M5→config.py, M6→Stats/Metrics 重叠, M7→tasks stub
+- **统计调整**: P1: 16→13, P2: 8→7, 总计: 34→30
+
 ---
 
 ## 11. 详细审计文件索引
@@ -551,18 +558,18 @@
 |------|----------|
 | 00-audit-framework.md | 审计框架 (25 维度 + DDD 检查方法) |
 | 01-audit-users.md | 用户管理 + 订阅 (C8, H1, H2) |
-| 02-audit-configs.md | 配置 / Tier / Feature Flags / 系统运维 (H16, H3, M6) |
+| 02-audit-configs.md | 配置 / Tier / Feature Flags / 系统运维 (H16, H3, M5) |
 | 03-audit-themes-articles.md | 主题 + 文章 (H4, C11, H14) |
 | 04-audit-staticpages-categories.md | 静态页面 + 资产分类 (C1, M1) |
 | 05-audit-moderation.md | 内容审核 |
 | 06-audit-marketing-experiments.md | 营销活动 + 实验 |
-| 07-audit-notifications-analytics.md | 通知 + Analytics (H15, H6-H8) |
+| 07-audit-notifications-analytics.md | 通知 + Analytics (H15, ~~H6/H7/H8 已删~~) |
 | 08-audit-ai-overrides.md | AI Insights + AI Models + Feature Overrides (C4, C7) |
-| 09-audit-tasks-webhooks-monitoring.md | 任务管理 + Webhook重试 + 用户创建监控 (C6, C10, H11, M8) |
+| 09-audit-tasks-webhooks-monitoring.md | 任务管理 + Webhook重试 + 用户创建监控 (C6, C10, H11, M7) |
 | 10-audit-logs.md | 日志 & 审计 (→C8, →H11) |
 
 ---
 
-**审计完成 (v2.3)**。共 **8 个 P0** / **16 个 P1** / **8 个 P2** / **2 个 P3** = **34 个问题**。
+**审计完成 (v2.4)**。共 **8 个 P0** / **13 个 P1** / **7 个 P2** / **2 个 P3** = **30 个问题**。
 
 Phase 1 的 8 个 P0 中有 2 个可在 1 小时内修复 (C4/C6)。建议从这 2 个开始启动修复。
