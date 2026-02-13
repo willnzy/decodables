@@ -1,8 +1,9 @@
-# Admin 功能全面审计报告
+# Admin 功能全面审计报告 v2.0
 
-> **审计日期**: 2026-02-12
-> **审计范围**: 全部 21 个 Admin API Router 文件 × 3 维度 (后端API ↔ 前端页面 ↔ 文档覆盖)
-> **目标**: 确保 Admin 页面功能完善并正常工作
+> **审计日期**: 2026-02-12 (初版) → 2026-02-13 (v2.0 全面修订)
+> **审计标准**: `audit-standard.md` v1.2 (25 维度 × 36 检查清单 × 287 检查项)
+> **审计范围**: 21 个后端 Router + 全部前端 Admin 页面 + 跨层一致性
+> **审计方法**: 4 轮并行 Agent 审计 (后端 Batch1-2 / Batch3-4 / 前端 / 跨层 D17-D25)
 
 ---
 
@@ -10,12 +11,14 @@
 
 ### 1.1 审计覆盖
 
-| 批次 | 模块 | Router 文件 | 审计文件 |
+| 批次 | 模块 | Router 文件 | 审计维度 |
 |------|------|------------|----------|
-| Batch 1 | 用户管理 + 配置/Tier/Flags/System | users, subscriptions, config, tiers, feature_flags, system | 01, 02 |
-| Batch 2 | 主题 + 文章 + 静态页面 + 资产分类 + 审核 | themes, articles, static_pages, asset_categories, moderation | 03, 04, 05 |
-| Batch 3 | 营销 + 实验 + 通知 + Analytics | campaigns, experiments, notifications, stats, metrics, events | 06, 07 |
-| Batch 4 | AI + Overrides + 任务/Webhook/监控 + 日志 | ai, ai_models, overrides, tasks_mgmt, webhooks_retry, user_creation_monitoring, logs | 08, 09, 10 |
+| Batch 1 | 用户管理 + 配置/Tier/Flags/System | users, subscriptions, config, tiers, feature_flags, system | D1-D8 |
+| Batch 2 | 主题 + 文章 + 静态页面 + 资产分类 + 审核 | themes, articles, static_pages, asset_categories, moderation | D1-D8 |
+| Batch 3 | 营销 + 实验 + 通知 + Analytics | campaigns, experiments, notifications, stats, metrics, events | D1-D8 |
+| Batch 4 | AI + Overrides + 任务/Webhook/监控 + 日志 | ai, ai_models, overrides, tasks_mgmt, webhooks_retry, user_creation_monitoring, logs | D1-D8 |
+| 跨层 | 全部模块 | — | D17-D25 |
+| 前端 | 全部 Admin 页面 | — | D9-D16 |
 
 ### 1.2 端点统计
 
@@ -46,104 +49,330 @@
 | 日志 (logs) | 5 | 4 | 80% | 🔴 无文档 |
 | **合计** | **~195** | **~142** | **~73%** | **~35%** |
 
+### 1.3 问题统计汇总
+
+| 严重度 | 数量 | 说明 |
+|--------|:---:|------|
+| 🔴 P0 (Critical) | **10** | 功能不可用 / 运行时错误 / 安全漏洞 |
+| 🟡 P1 (High) | **14** | 功能降级 / 架构违规 / 一致性缺失 |
+| 🟢 P2 (Medium) | **8** | 代码质量 / 文档缺失 / 优化建议 |
+| ⚪ P3 (Low) | **2** | 微小改进 |
+| **总计** | **34** | |
+
+> v1.0 → v2.0 对比: P0 从 4 增至 10 (新增 6), P1 从 9 增至 14 (新增 5), 新增 P2/P3 维度
+
 ---
 
-## 二、🔴 Critical 问题 (P0 — 功能不可用)
+## 二、🔴 Critical 问题 (P0 — 功能不可用/安全漏洞)
 
-### C1: 资产分类模块完全不可用
-- **文件**: asset_categories.py ↔ 前端 admin/content
+### C1: 资产分类模块完全不可用 ⬅️ v1.0
+- **文件**: `api/admin/asset_categories.py` ↔ 前端 `admin/content`
 - **问题**: 后端用 `slug` 标识资源，前端用 `id`；PUT vs PATCH 不匹配；字段名全错
 - **影响**: 所有 CRUD 操作都会失败
+- **审计维度**: D1 (端点完整性) + D17 (参数一致性)
 - **修复**: 统一标识符 + HTTP 方法 + 字段映射
 
-### C2: 用户 Tier 变更调用已废弃 API
-- **文件**: users.py → POST /users/{user_id}/tier 返回 410
+### C2: 用户 Tier 变更调用已废弃 API ⬅️ v1.0
+- **文件**: `api/admin/users.py` → POST /users/{user_id}/tier 返回 410
 - **问题**: 前端仍调用已废弃端点
 - **影响**: Tier 变更功能完全失败
+- **审计维度**: D1 (端点完整性)
 - **修复**: 前端切换到新 Tier 管理流程 (通过 Stripe)
 
-### C3: 通知模板 CRUD (v3.33) 无前端 UI
-- **文件**: notifications.py — 6 个模板端点 (GET/POST/PUT/DELETE/send)
+### C3: 通知模板 CRUD 无前端 UI ⬅️ v1.0
+- **文件**: `api/admin/notifications.py` — 6 个模板端点
 - **问题**: 后端已实现完整的草稿→发送工作流，但前端只有 broadcast 按钮
 - **影响**: 新增的通知管理功能无法使用
+- **审计维度**: D9 (前端页面覆盖)
 - **修复**: 创建 NotificationTemplatePanel 前端组件
 
-### C4: AI Models update_admin_config 占位符
-- **文件**: ai_models.py → PUT /ai/models/config/admin
+### C4: AI Models update_admin_config 占位符 ⬅️ v1.0
+- **文件**: `api/admin/ai_models.py` → PUT /ai/models/config/admin
 - **问题**: 端点路由已注册，但实现为 TODO 占位符
 - **影响**: 调用返回错误或空响应
+- **审计维度**: D2 (实现完整性)
 - **修复**: 实现或删除该端点
 
+### C5: tiers.py DDD 违规 — 直接创建 Repository 🆕
+- **文件**: `api/admin/tiers.py`
+- **问题**: 直接实例化 Repository (`TierConfigRepository()`) 而非通过 Container DI
+- **影响**: 违反 DDD 架构规范，无法统一管理生命周期和测试 mock
+- **审计维度**: D5 (DDD 合规) + CL-3.3 (Repository 层检查)
+- **修复**: 迁移到 Container-based DI 模式
+
+### C6: tasks_mgmt.py 缺少 await 导致协程未执行 🆕
+- **文件**: `api/admin/tasks_mgmt.py` 第 165 行
+- **问题**: 异步函数调用缺少 `await`，协程对象被创建但从未执行
+- **影响**: 相关任务操作静默失败，无错误日志
+- **审计维度**: D3 (异步安全) + CL-4.1 (异步编程规范)
+- **修复**: 添加 `await` 关键字
+
+### C7: overrides.py 全面违规 — DDD + 安全 + 功能不完整 🆕
+- **文件**: `api/admin/overrides.py`
+- **问题** (复合):
+  1. 直接调用 Supabase client，完全绕过 DDD 架构
+  2. 无 Container DI，无速率限制
+  3. CRUD 不完整 — 仅 GET/DELETE，缺 POST/PUT
+  4. 无参数验证 (feature_key 白名单)
+  5. 错误处理直接暴露技术细节
+- **影响**: 安全风险 + 功能不完整 + 架构不一致
+- **审计维度**: D5 (DDD) + D6 (安全) + D1 (端点完整性) + D22 (鉴权)
+- **修复**: 全面重构 — 迁移到 DDD + 补全 CRUD + 添加安全机制
+
+### C8: 前后端分页参数系统性不一致 🆕
+- **文件**: 前端 `admin/_lib/types.ts` + `admin/_lib/api.ts` ↔ 后端多个 Router
+- **问题**:
+  - 前端类型定义使用 `page/page_size` (如 OperationLogsResponse, ErrorLogsResponse, TasksResponse)
+  - 前端 API 调用发送 `page/page_size` 参数
+  - 后端已迁移到 `offset/limit` 模式 (v3.26+)
+- **影响**: 运行时分页功能失败或返回错误数据
+- **审计维度**: D17 (参数一致性) + CL-3.6 (分页检查)
+- **修复**: 前端统一迁移到 offset/limit，或后端兼容层
+
+### C9: 缺失统一错误处理链路 🆕
+- **文件**: 前端 `admin/_lib/adminApiClient.ts` + 后端多个 Router
+- **问题**:
+  - 后端 overrides.py 直接返回 `HTTPException(500, "...")` 无错误码分类
+  - 前端 adminApiClient.ts 仅捕获异常做日志，无 `getUserFriendlyMessage()` 转换
+  - 用户面对原始技术错误消息
+- **影响**: 管理员看到技术错误信息，影响操作体验和安全
+- **审计维度**: D18 (错误处理链路) + CL-3.9 (CRUD 完整性)
+- **修复**: 建立 Admin 错误码系统 + 前端错误友好化转换
+
+### C10: user_creation_monitoring 全面违规 🆕
+- **文件**: `api/admin/user_creation_monitoring.py`
+- **问题** (复合):
+  1. 未使用 Container DI，直接调用 Service 单例
+  2. 无速率限制 — 监控端点可被滥用
+  3. `/events` 端点返回未脱敏用户邮箱 (PII 泄露)
+- **影响**: 安全风险 (PII泄露 + 无限流) + 架构不一致
+- **审计维度**: D5 (DDD) + D6 (安全) + CL-3.10 (安全专项)
+- **修复**: 迁移到 Container DI + 添加限流 + 邮箱脱敏
+
 ---
 
-## 三、🟡 High 问题 (P1 — 功能降级)
+## 三、🟡 High 问题 (P1 — 功能降级/架构问题)
 
-### H1: 前后端参数不一致 (多模块)
-- **用户搜索**: 前端 `q/page/page_size` vs 后端 `search/offset/limit`
-- **积分字段**: 前端 `credit_type` vs 后端 `bucket`
-- **日志分页**: 前端 `page/limit` vs 后端 `offset/limit`
-- **影响**: 分页/搜索/过滤功能可能返回错误结果
+### H1: users.py Tier 枚举使用过时命名 🆕
+- **文件**: `api/admin/users.py`
+- **问题**: Tier 过滤使用 `free/starter/pro` 字符串而非标准 `t1/t2/t3/t4` 系统代码
+- **影响**: 若 Tier 显示名称修改，过滤逻辑会失效
+- **审计维度**: D4 (业务规则一致性) + CL-3.2 (通用模块检查)
+- **修复**: 统一使用 `TIER_T1/T2/T3` 常量
 
-### H2: Feature Overrides 完全未集成
-- **文件**: overrides.py — 3 个端点
-- **问题**: 前端无任何调用 + 违反 DDD 架构 + 无速率限制/参数验证
+### H2: subscriptions.py VALID_TARGET_TIERS 缺失 t3 🆕
+- **文件**: `api/admin/subscriptions.py`
+- **问题**: `VALID_TARGET_TIERS` 白名单缺少 `t3` (Pro Plan)
+- **影响**: 管理员无法将用户订阅切换到 Pro Plan
+- **审计维度**: D4 (业务规则)
+- **修复**: 添加 `t3` 到白名单
+
+### H3: feature_flags.py 全局 Service 导入 🆕
+- **文件**: `api/admin/feature_flags.py`
+- **问题**: 在模块级导入 `feature_service` 全局实例而非通过 Container DI
+- **影响**: 测试时无法 mock，生命周期管理不一致
+- **审计维度**: D5 (DDD 合规) + CL-3.3 (Repository 层检查)
+- **修复**: 迁移到 Container DI 注入模式
+
+### H4: Feature Overrides 完全未集成 ⬅️ v1.0 (H2→H4)
+- **文件**: `api/admin/overrides.py` — 3 个端点
+- **问题**: 前端无任何调用 + 参见 C7 的全面违规
 - **决策**: 确认是否需要此功能 — 保留则需全面重构，否则删除
+- **审计维度**: D9 (前端覆盖)
 
-### H3: Metrics 全部 7 端点无前端 (空中楼阁)
-- **文件**: metrics.py — daily/monthly/retention/funnel/errors/dau-trend/refresh
+### H5: Metrics 全部 7 端点无前端 ⬅️ v1.0 (H3→H5)
+- **文件**: `api/admin/metrics.py` — daily/monthly/retention/funnel/errors/dau-trend/refresh
 - **问题**: 完整后端实现 + Pydantic 模型，但零前端集成
-- **决策**: 创建 Metrics Dashboard 或评估与 Stats 合并
+- **审计维度**: D9 (前端覆盖)
 
-### H4: Events 全部 5 端点无前端
-- **文件**: events.py — 事件浏览/统计/聚合/触发
-- **问题**: 同 Metrics，后端完整但前端为空
-- **决策**: 创建 Events Browser UI 或评估需求
+### H6: Events 全部 5 端点无前端 ⬅️ v1.0 (H4→H6)
+- **文件**: `api/admin/events.py`
+- **审计维度**: D9 (前端覆盖)
 
-### H5: Stats 10 个高级端点无前端
-- **文件**: stats.py — tier-distribution, tier-activity, subscription-events, page-views, project-details, returning-users, tier-trend, tier-conversion, performance, user-distribution
+### H7: Stats 10 个高级端点无前端 ⬅️ v1.0 (H5→H7)
+- **文件**: `api/admin/stats.py`
 - **影响**: 大量数据洞察能力未暴露
+- **审计维度**: D9 (前端覆盖)
 
-### H6: user_creation_monitoring DDD 违规
-- **文件**: user_creation_monitoring.py
-- **问题**: 未使用 Container-based DI + 无速率限制
-- **影响**: 安全风险 + 与其他模块架构不一致
-
-### H7: Themes 批量生成端点缺失
-- **文件**: themes.py
+### H8: Themes 批量生成端点缺失 ⬅️ v1.0 (H7→H8)
+- **文件**: `api/admin/themes.py`
 - **问题**: 前端调用 batch-generate/preview 和 status 端点，但后端未实现
-- **影响**: 批量主题生成功能不可用
+- **审计维度**: D1 (端点完整性)
 
-### H8: Articles 辅助端点缺失
-- **文件**: articles.py
+### H9: Articles 辅助端点缺失 ⬅️ v1.0 (H8→H9)
+- **文件**: `api/admin/articles.py`
 - **问题**: check-slug (slug 唯一性) 和 stats (文章统计) 端点前端需要但后端未实现
-- **影响**: 创建文章无法检查 slug 冲突
+- **审计维度**: D1 (端点完整性)
 
-### H9: 用户监控 PII 泄露风险
-- **文件**: user_creation_monitoring.py → /events 端点
-- **问题**: 返回未脱敏用户邮箱
-- **修复**: 实现邮箱掩码
+### H10: 前端 ~20 个空 catch 块 🆕
+- **文件**: 多个前端 Admin 组件 (AssetCategoriesPanel, MarketplaceModerationPanel, StaticPagesPanel 等)
+- **问题**: `catch (error) {}` 或 `catch (e) { /* empty */ }` — 异常被静默吞掉
+- **影响**: 错误无法追踪，用户操作失败但无任何反馈
+- **审计维度**: D12 (错误处理) + CL-3.7 (前端错误处理)
+- **修复**: 统一使用 Logger 类记录 + toast 通知用户
+
+### H11: 批量操作缺乏前端回滚机制 🆕
+- **文件**: 前端 `admin/_lib/api.ts`
+- **问题**: 后端有 batch_update_configs 和 batch_notification，但前端:
+  1. 无批量删除/更新的前端实现
+  2. 无乐观更新回滚机制 (服务端部分失败时 UI 不恢复)
+- **审计维度**: D19 (批量操作原子性) + CL-3.9 (CRUD 完整性)
+- **修复**: 实现批量操作 UI + 失败回滚
+
+### H12: 日志格式不统一 🆕
+- **文件**: `api/admin/tasks_mgmt.py`, `api/admin/overrides.py`, 前端 `adminApiClient.ts`
+- **问题**:
+  - tasks_mgmt.py 使用格式字符串而非 `event: "module.action"` 结构化格式
+  - overrides.py 有 extra 但缺 event 字段
+  - 前端直接 `console.log()` 而非 Logger 类
+- **审计维度**: D23 (日志链路) + CL-4.2 (日志规范)
+- **修复**: 统一为 `{event: "admin.xxx", extra: {user_id, duration_ms}}` 格式
+
+### H13: N+1 查询风险 + 分页限制缺失 🆕
+- **文件**: `api/admin/overrides.py`, `api/admin/logs.py`, 多个前端组件
+- **问题**:
+  - overrides.py 循环构造 response 可能产生 N+1 查询
+  - 后端 limit 最大 100 但前端无对应限制
+  - 前端可能一次加载大量记录
+- **审计维度**: D25 (性能) + CL-4.4 (性能优化)
+- **修复**: 添加 JOIN 优化 + 前端分页限制
+
+### H14: 认证完整但细粒度鉴权不足 🆕
+- **文件**: 所有 admin 模块
+- **问题**:
+  - 所有 23 个模块都有 `Depends(require_admin)` ✅
+  - 但无角色分化 — 所有 admin 权限相同 (支持/运营 vs 财务 无区分)
+  - overrides.py 允许任意 admin 修改任意用户的 feature override
+- **审计维度**: D22 (认证/鉴权一致性) + CL-3.10 (安全专项)
+- **建议**: 中期实施 RBAC (基于角色的权限模型)
 
 ---
 
-## 四、🟢 表现良好的模块
+## 四、🟢 Medium 问题 (P2 — 代码质量/优化)
 
-| 模块 | 三维度评分 | 亮点 |
+### M1: 22 个前端文件超过 300 行红线 🆕
+- **问题**: 超标文件清单 (Top 5):
+
+| 文件 | 行数 | 超标倍数 |
+|------|:---:|:---:|
+| AssetCategoriesPanel.tsx | 985 | 3.3x |
+| MarketplaceModerationPanel.tsx | 823 | 2.7x |
+| StaticPagesPanel.tsx | 812 | 2.7x |
+| ArticleEditorDialog.tsx | 579 | 1.9x |
+| NotificationCenterPanel.tsx | 544 | 1.8x |
+
+- **审计维度**: D14 (代码质量) + CL-3.16 (文件大小)
+- **建议**: 按功能拆分为子组件 (表格、表单、对话框)
+
+### M2: 前端 1 处 console.log 未清理 🆕
+- **问题**: 生产代码中残留 `console.log` 调试语句
+- **审计维度**: CL-3.15 (日志规范)
+
+### M3: 无并发安全/乐观锁机制 🆕
+- **问题**: 后端更新操作无 version/etag 字段，多管理员同时修改无冲突检测
+- **审计维度**: D20 (并发安全) + CL-3.3 (Repository 层)
+- **建议**: 关键操作 (积分调整、Tier更新) 添加 version 字段
+
+### M4: 文档覆盖率仅 35%
+- **问题**: ~95 个端点完全无文档，需新建 8 份 + 扩展 6 份 v3 文档
+- **审计维度**: D8 (文档覆盖)
+
+### M5: asset_categories.py 部分 DDD 合规
+- **问题**: 虽通过 Container DI，但字段命名和 HTTP 方法与前端不一致
+- **审计维度**: D5 (DDD)
+
+### M6: subscriptions.py 同步调用隐患
+- **问题**: 部分 Stripe 交互可能存在同步阻塞
+- **审计维度**: D3 (异步安全) + CL-4.1
+
+### M7: config.py 批量更新无事务保护
+- **问题**: batch_update_configs 多个更新非原子操作
+- **审计维度**: D19 (批量操作原子性)
+
+### M8: 前端 Pagination 组件命名不一致
+- **问题**: 部分使用 `page/pageSize`, 部分使用 `page/page_size`, 部分使用 `offset/limit`
+- **审计维度**: CL-3.6 (分页一致性)
+
+---
+
+## 五、⚪ Low 问题 (P3 — 微小改进)
+
+### L1: 部分 Router 缺少文档字符串
+- **问题**: campaigns, experiments 等模块端点缺少 docstring
+- **审计维度**: CL-3.2 (通用检查)
+
+### L2: 前端部分组件缺少 loading 骨架屏
+- **问题**: 数据加载时显示空白而非 loading 状态
+- **审计维度**: D15 (用户体验)
+
+---
+
+## 六、表现良好的模块
+
+| 模块 | 评分 | 亮点 |
 |------|:---:|------|
-| 配置管理 (config) | 9/10 | API→前端→文档 100% 对齐 |
-| Tier 管理 (tiers) | 9/10 | 3 端点全部对齐 |
-| 系统运维 (system) | 9/10 | 12 端点全部对齐 |
+| 配置管理 (config) | 9/10 | API→前端→文档 100% 对齐，Container DI ✅ |
+| Tier 管理 (tiers) | 8/10 | 3 端点全部对齐 (扣 1 分: DI 直接创建 Repo) |
+| 系统运维 (system) | 9/10 | 12 端点全部对齐，结构清晰 |
 | 内容审核 (moderation) | 8.8/10 | 10 端点 100% 前端调用 |
 | 营销活动 (campaigns) | 8/10 | 8 端点 100% 前端调用 (缺文档) |
 | 实验 (experiments) | 8/10 | 14 端点 100% 前端调用 (缺文档) |
 | AI Insights (ai) | 9.5/10 | 三维度完整对齐 |
 | Webhook 重试 | 9/10 | 2 端点完整 (缺文档) |
-| 任务管理 | 8.5/10 | 4 端点对齐 (缺文档) |
+| 任务管理 | 8.5/10 | 4 端点对齐 (缺文档, 扣 0.5: 缺 await) |
+| 日志 (logs) | 8/10 | 结构化日志 + Container DI ✅ |
 
 ---
 
-## 五、文档覆盖分析
+## 七、架构合规分析
 
-### 5.1 文档状态矩阵
+### 7.1 DDD / Container DI 迁移状态
+
+| 模块 | DDD 合规 | Container DI | 版本 | 问题 |
+|------|:---:|:---:|------|------|
+| users | ✅ | ✅ | v3.29+ | Tier 枚举过时 (H1) |
+| subscriptions | ✅ | ✅ | v3.29+ | 缺 t3 (H2) |
+| config | ✅ | ✅ | v3.29+ | — |
+| tiers | ⚠️ | ❌ 直接创建 Repo | v3.29+ | C5 |
+| feature_flags | ⚠️ | ❌ 全局导入 | v3.29+ | H3 |
+| system | ✅ | ✅ | v3.29+ | — |
+| themes | ✅ | ✅ | v3.31 | — |
+| articles | ✅ | ✅ | v3.30 | — |
+| static_pages | ✅ | ✅ | v3.30 | — |
+| asset_categories | ✅ | ✅ | v3.30 | 字段不一致 (C1) |
+| moderation | ✅ | ✅ | v3.30 | — |
+| campaigns | ✅ | ✅ | v3.31 | — |
+| experiments | ✅ | ✅ | v3.32 | — |
+| notifications | ✅ | ✅ | v3.30 | — |
+| stats | ✅ | ✅ | v3.30 | — |
+| metrics | ✅ | ✅ | v3.29 | — |
+| events | ✅ | ✅ | v3.27-29 | — |
+| ai | ✅ | ✅ | v3.27 | — |
+| ai_models | ✅ | ✅ | v3.30 | C4 占位符 |
+| **overrides** | **🔴** | **❌ 直接 Supabase** | v1.0 | **C7 全面违规** |
+| tasks_mgmt | ✅ | ✅ | v3.29 | C6 缺 await |
+| webhooks_retry | ✅ | ✅ | v1.1 | — |
+| **user_creation_monitoring** | **🔴** | **❌ 直接 Service** | 未迁移 | **C10 全面违规** |
+| logs | ✅ | ✅ | v3.29 | — |
+
+**DDD 完全合规率**: 17/23 (74%) — 6 个模块需要修复/迁移
+**Container DI 合规率**: 19/23 (83%) — 4 个模块需要迁移
+
+### 7.2 安全配置
+
+| 安全项 | 达标模块 | 不达标模块 | 合规率 |
+|--------|:---:|:---:|:---:|
+| Rate Limiting | 21 | overrides, user_creation_monitoring | 91% |
+| 认证 (require_admin) | 23 | — | 100% |
+| 细粒度鉴权 (RBAC) | 0 | 全部 | 0% |
+| 参数验证 (feature_key 白名单) | 20 | overrides, user_creation_monitoring, tiers | 87% |
+| PII 脱敏 | 22 | user_creation_monitoring | 96% |
+
+---
+
+## 八、文档覆盖分析
+
+### 8.1 文档状态矩阵
 
 | 模块 | v2 文档 | v3 文档 | 需补充 |
 |------|:---:|:---:|:---:|
@@ -166,81 +395,90 @@
 | 用户监控 | ❌ 无 | ❌ 无 | 新建 |
 | 日志 | ❌ 无 | ❌ 无 | 新建 |
 
-### 5.2 文档缺口总计
+### 8.2 文档缺口总计
 - **完全无文档的端点**: ~95 个 (占总量 49%)
 - **需要新建的 v3 文档**: 约 8 份
 - **需要从骨架扩展的 v3 文档**: 约 6 份
 
 ---
 
-## 六、架构合规分析
+## 九、修复优先级路线图
 
-### 6.1 DDD / Container DI 迁移状态
+### Phase 1: 紧急修复 (P0 — 1-2 天)
 
-| 模块 | DDD 合规 | Container DI | 版本 |
+| # | 问题 | 工作量 | 风险 |
+|---|------|:---:|:---:|
+| 1 | C6: tasks_mgmt.py 添加 await | 5min | 🟢 低 |
+| 2 | C2: 用户 Tier 变更切到新流程 | 2h | 🟡 中 |
+| 3 | C1: 资产分类统一 slug/id + 字段名 | 4h | 🟡 中 |
+| 4 | C4: AI Models 占位符 — 实现或删除 | 1h | 🟢 低 |
+| 5 | C5: tiers.py 迁移到 Container DI | 1h | 🟢 低 |
+| 6 | C8: 前端分页参数统一 offset/limit | 4h | 🟡 中 |
+| 7 | C9: 建立错误码系统 + 前端转换 | 4h | 🟡 中 |
+| 8 | C10: user_creation_monitoring 全面迁移 | 3h | 🟢 低 |
+| 9 | C7: overrides.py 全面重构 | 6h | 🔴 高 |
+| 10 | C3: 通知模板前端组件 | 8h | 🟡 中 |
+
+### Phase 2: 架构修复 (P1 — 3-5 天)
+
+| # | 问题 | 工作量 |
+|---|------|:---:|
+| 1 | H1: users.py Tier 枚举标准化 | 1h |
+| 2 | H2: subscriptions 添加 t3 | 15min |
+| 3 | H3: feature_flags DI 迁移 | 1h |
+| 4 | H10: 清理 ~20 个空 catch 块 | 3h |
+| 5 | H12: 日志格式统一 | 2h |
+| 6 | H8: Themes batch-generate 实现 | 4h |
+| 7 | H9: Articles check-slug + stats 实现 | 3h |
+| 8 | H11: 批量操作回滚机制 | 4h |
+| 9 | H13: N+1 优化 + 分页限制 | 3h |
+| 10 | H14: RBAC 设计 (方案阶段) | 4h |
+
+### Phase 3: 功能完善 (P1-P2 — 1-2 周)
+
+| # | 问题 | 工作量 |
+|---|------|:---:|
+| 1 | H4: Feature Overrides 功能决策 | 决策 |
+| 2 | H5: Metrics Dashboard 前端 | 8h |
+| 3 | H6: Events Browser 前端 | 6h |
+| 4 | H7: Stats 高级聚合前端 | 8h |
+| 5 | M1: 超大前端文件拆分 (Top 5) | 8h |
+| 6 | M3: 乐观锁机制 | 4h |
+
+### Phase 4: 文档补全 (P2)
+
+| # | 内容 | 工作量 |
+|---|------|:---:|
+| 1 | 新建 8 份 v3 文档 | 16h |
+| 2 | 扩展 6 份骨架 v3 文档 | 12h |
+
+---
+
+## 十、v1.0 → v2.0 变更日志
+
+| 维度 | v1.0 | v2.0 | 变化 |
 |------|:---:|:---:|------|
-| users | ✅ | ✅ | v3.29+ |
-| config/tiers/flags | ✅ | ✅ | v3.29+ |
-| system | ✅ | ✅ | v3.29+ |
-| themes | ✅ | ✅ | v3.31 |
-| articles | ✅ | ✅ | v3.30 |
-| static_pages | ✅ | ✅ | v3.30 |
-| asset_categories | ✅ | ✅ | v3.30 |
-| moderation | ✅ | ✅ | v3.30 |
-| campaigns | ✅ | ✅ | v3.31 |
-| experiments | ✅ | ✅ | v3.32 |
-| notifications | ✅ | ✅ | v3.30 |
-| stats | ✅ | ✅ | v3.30 |
-| metrics | ✅ | ✅ | v3.29 |
-| events | ✅ | ✅ | v3.27-29 |
-| ai | ✅ | ✅ | v3.27 |
-| ai_models | ✅ | ✅ | v3.30 |
-| **overrides** | **🔴 违规** | **❌ 直接 Supabase** | v1.0 |
-| tasks_mgmt | ✅ | ✅ | v3.29 |
-| webhooks_retry | ✅ | ✅ | v1.1 |
-| **user_creation_monitoring** | **🔴 违规** | **❌ 直接 Service** | 未迁移 |
-| logs | ✅ | ✅ | v3.29 |
+| P0 数量 | 4 | 10 | +6 (新发现 C5-C10) |
+| P1 数量 | 9 | 14 | +5 (新发现 H1-H3, H10-H14) |
+| P2 数量 | 未统计 | 8 | 新增维度 |
+| P3 数量 | 未统计 | 2 | 新增维度 |
+| 审计维度 | D1-D8 为主 | D1-D25 全覆盖 | 扩展到跨层审计 |
+| DDD 合规率 | 90% (19/21) | 74% (17/23) | 更严格标准 (含 DI 模式检查) |
+| 安全评估 | Rate Limiting 仅 | 5 维度安全矩阵 | 新增 RBAC/PII/参数验证 |
 
-**DDD 合规率**: 19/21 (90%) — 2 个模块需要迁移
-
-### 6.2 安全配置 (Rate Limiting)
-
-| 模块 | Rate Limiting | 状态 |
-|------|:---:|:---:|
-| 大部分模块 | ✅ 有 | 差异化限流 |
-| **user_creation_monitoring** | **❌ 无** | 🔴 安全风险 |
-| **overrides** | **❌ 无** | 🔴 安全风险 |
+**新增审计维度 (v2.0)**:
+- D17: API-前端参数一致性 → 发现 C8
+- D18: 错误处理链路 → 发现 C9
+- D19: 批量操作原子性 → 发现 H11
+- D20: 并发安全 → 发现 M3
+- D22: 认证/鉴权一致性 → 发现 H14
+- D23: 日志链路 → 发现 H12
+- D24: 用户流程完整性 → 确认 C7 CRUD 不完整
+- D25: 性能 → 发现 H13
 
 ---
 
-## 七、修复优先级路线图
-
-### Phase 1: 紧急修复 (P0 — 功能不可用)
-1. ~~资产分类~~: 统一 slug/id + PUT/PATCH + 字段名 (C1)
-2. 用户 Tier 变更: 前端切到新流程或后端恢复端点 (C2)
-3. 通知模板 CRUD: 创建前端组件 (C3)
-4. AI Models 占位符: 实现或删除 (C4)
-
-### Phase 2: 功能修复 (P1 — 功能降级)
-5. 参数不一致统一 (H1): page→offset 映射层
-6. Feature Overrides 决策 (H2): 保留重构 or 删除
-7. Themes batch-generate 端点实现 (H7)
-8. Articles check-slug + stats 端点实现 (H8)
-9. user_creation_monitoring DDD 迁移 + 限流 (H6)
-10. PII 脱敏 (H9)
-
-### Phase 3: 功能完善 (P1-P2)
-11. Metrics Dashboard 前端 (H3)
-12. Events Browser 前端 (H4)
-13. Stats 高级聚合前端 (H5)
-
-### Phase 4: 文档补全
-14. 新建 8 份 v3 文档 (campaigns, experiments, notifications, analytics, ai_models, tasks, webhooks, logs)
-15. 扩展 6 份骨架 v3 文档
-
----
-
-## 八、详细审计文件索引
+## 十一、详细审计文件索引
 
 | 文件 | 覆盖模块 |
 |------|----------|
@@ -257,4 +495,6 @@
 
 ---
 
-**审计完成**。共发现 **4 个 P0 (功能不可用)**、**9 个 P1 (功能降级)**、**多个 P2 (文档/优化)** 问题。
+**审计完成 (v2.0)**。共发现 **10 个 P0 (功能不可用/安全漏洞)**、**14 个 P1 (功能降级/架构问题)**、**8 个 P2 (代码质量)**、**2 个 P3 (微小改进)**。
+
+建议按路线图分 4 阶段修复，Phase 1 的 10 个 P0 中有 3 个可在 1 小时内修复 (C4/C5/C6)。
