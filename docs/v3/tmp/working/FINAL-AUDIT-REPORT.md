@@ -54,12 +54,12 @@
 | 严重度 | 数量 | 说明 |
 |--------|:---:|------|
 | 🔴 P0 (Critical) | **8** | 功能不可用 / 运行时错误 / 安全漏洞 |
-| 🟡 P1 (High) | **12** | 功能降级 / 架构违规 / 一致性缺失 |
+| 🟡 P1 (High) | **11** | 功能降级 / 架构违规 / 一致性缺失 |
 | 🟢 P2 (Medium) | **7** | 代码质量 / 文档缺失 / 优化建议 |
-| ⚪ P3 (Low) | **2** | 微小改进 |
-| **总计** | **29** | |
+| ⚪ P3 (Low) | **0** | — |
+| **总计** | **26** | |
 
-> v2.4 变化: 深度代码验证删除 H6/H7/H8/H15 (前端实际完整) + 删除 M5 (代码无同步阻塞证据)，修正 §1.2 端点统计
+> v2.4 变化: 深度代码验证删除 H6/H7/H8/H10/H15 (前端实际完整/前提不存在) + 删除 M5 (代码无同步阻塞证据) + 删除 L1/L2 (代码验证证伪) + 修正 H13 (非 N+1) + 修正 §1.2 端点统计
 
 ---
 
@@ -218,10 +218,8 @@
 - **维度**: D12 + CL-3.7
 - **修复**: 统一使用 Logger 类记录 + toast 通知用户
 
-### H10: 批量操作缺乏前端回滚机制
-- **文件**: 前端 `admin/_lib/api.ts`
-- **问题**: 后端有 batch_update_configs 等批量 API，但前端无乐观更新回滚机制 (部分失败时 UI 不恢复)
-- **维度**: D19 + CL-3.9
+### ~~H10~~: ❌ v2.4 删除 — 批量操作前端不存在
+> **删除理由**: 代码验证发现前端 API 层无任何 batch 操作调用，后端 batch_update_configs 为内部 Service 函数非 API 端点。前端不调用批量 API，"缺乏回滚"前提不成立。
 
 ### H11: 日志格式不统一
 - **文件**: `api/admin/tasks_mgmt.py`, `api/admin/overrides.py`, 前端 `adminApiClient.ts`
@@ -240,10 +238,11 @@
 - **维度**: D22 + CL-3.10
 - **建议**: 中期实施 RBAC (基于角色的权限模型)
 
-### H13: N+1 查询风险 + 分页限制缺失
-- **文件**: `api/admin/overrides.py`, `api/admin/logs.py`, 多个前端组件
-- **问题**: overrides.py 循环构造 response；后端 limit 最大 100 但前端无对应限制
-- **维度**: D25 + CL-4.4
+### H13: ~~N+1 查询风险~~ + 分页限制缺失 ⚡ *v2.4 修正*
+- **文件**: `api/admin/overrides.py`, 多个前端组件
+- **问题**: ~~overrides.py 循环构造 response~~ (v2.4 验证: 实为 1 次查询 + 内存循环，非 N+1); 后端 limit 最大 100 但前端无对应 max 约束
+- **维度**: CL-4.4
+- **v2.4 修正说明**: 原 "N+1 查询风险" 不成立 — overrides.py 仅执行 1 次 Supabase 查询后在内存中循环构造 response，不是 N+1 模式。保留分页限制缺失问题 (前端可传任意 limit 值)
 
 ### H14: Articles 前端筛选参数后端不处理 🆕 *v2.3 新增*
 - **文件**: `api/admin/articles.py` ↔ 前端 articles 组件
@@ -253,7 +252,8 @@
 - **详见**: 03-audit-themes-articles.md §B
 
 > **关于 C3/C5/C9 降级**: 这三个问题已标注在 §2 原位，但其优先级已从 P0 降级为 P1。新编号 H15/H16/H17，详细降级理由见各条目。
-> **关于 H6/H7/H8/H15 删除 (v2.4)**: 代码验证证伪"无前端"结论，详见 §2 (H15) 和 §3 (H6/H7/H8) 各条目删除理由。
+> **关于 H6/H7/H8/H10/H15 删除 (v2.4)**: 代码验证证伪"无前端"结论 (H6/H7/H8/H15) + 批量 API 前提不存在 (H10)，详见各条目删除理由。
+> **关于 L1/L2 删除 (v2.4)**: 代码验证证伪 — Router 实际有 docstring (L1)；57 个组件有 436 处 Skeleton/loading (L2)。
 
 ---
 
@@ -310,13 +310,13 @@
 
 ## 5. ⚪ Low 问题 (P3 — 微小改进)
 
-### L1: 部分 Router 缺少文档字符串
-- **问题**: campaigns, experiments 等模块端点缺少 docstring
-- **维度**: CL-3.2
+### ~~L1~~: ❌ v2.4 删除 — Router 实际有 docstring
 
-### L2: 前端部分组件缺少 loading 骨架屏
-- **问题**: 数据加载时显示空白而非 loading 状态
-- **维度**: D15
+> **删除理由**: 代码验证发现 campaigns.py 和 experiments.py 端点均有完整 docstring。原审计结论 "缺少 docstring" 与代码事实不符。
+
+### ~~L2~~: ❌ v2.4 删除 — 前端组件实际有 loading 骨架屏
+
+> **删除理由**: 代码验证发现 admin 目录下 57 个组件中有 436 处 Skeleton/loading 实例 (Skeleton 组件 + isLoading/loading state + LoadingSpinner)。原审计结论 "缺少 loading 骨架屏" 与代码事实严重不符。
 
 ---
 
@@ -441,10 +441,10 @@
 | 7 | ~~H15 (原C3)~~: v2.4 删除 — 前端已完整 | — |
 | 8 | H17 (原C9): 建立错误码系统 + 前端转换 | 4h |
 | 9 | H9: 清理约 40 个空 catch 块 | 4h |
-| 10 | H10: 批量操作回滚机制 | 4h |
+| 10 | ~~H10~~: v2.4 删除 — 批量 API 不存在 | — |
 | 11 | H11: 日志格式统一 | 2h |
 | 12 | H12: RBAC 设计 (方案阶段) | 4h |
-| 13 | H13: N+1 优化 + 分页限制 | 3h |
+| 13 | H13: 分页限制缺失 (N+1 已证伪) | 1h |
 
 ### Phase 3: 功能完善 (P2 — 1-2 周)
 
@@ -463,8 +463,8 @@
 |---|------|:---:|
 | 1 | M4: 新建 8 份 v3 文档 | 16h |
 | 2 | M4: 扩展 6 份骨架 v3 文档 | 12h |
-| 3 | L1: Router 端点 docstring 补全 | 2h |
-| 4 | L2: 前端组件 loading 骨架屏 | 4h |
+| 3 | ~~L1~~: v2.4 删除 — Router 实际有 docstring | — |
+| 4 | ~~L2~~: v2.4 删除 — 组件实际有 loading | — |
 
 ---
 
@@ -503,7 +503,7 @@
 - **补充 H6/H7/H8**: 添加详见引用 (07-audit-notifications-analytics.md §C/D/B)
 - **补充 H7 描述**: 从仅 2 行扩展为完整问题描述 (文件/问题/影响/维度/详见)
 - **补充 M2 描述**: 从仅 1 行扩展为完整描述 (文件/问题/影响/维度/修复)
-- **补全路线图**: Phase 3 新增 M2/M5/M6/M7；Phase 4 新增 L1/L2
+- **补全路线图**: Phase 3 新增 M2/M5/M6/M7；Phase 4 新增 L1/L2 (v2.4 已删除)
 - **修正 v2.0 日志**: DDD 合规率 74% (17/23) → 83% (19/23)
 
 ### v2.2 → v2.3 变更 (2026-02-13)
@@ -529,13 +529,19 @@
 
 **方法论升级**: 深度代码验证 — 扩展到 P2 级问题 + §1.2 端点统计 + §6 模块评分的逐一代码核实
 
-- **4 项 P1 删除** (代码验证证伪原审计结论):
+- **5 项 P1 删除** (代码验证证伪原审计结论):
   - ~~H6~~: Metrics "无前端" — 实际有 7 个 API + 7 Hook + MetricsPanel 等 4 组件，通过 analytics/page.tsx Tab 路由完整可用
   - ~~H7~~: Events "无前端" — 实际有 5 个 API + 5 Hook + EventsPanel (334 行)，通过 analytics/page.tsx Tab 路由完整可用
   - ~~H8~~: Stats "10 端点无前端" — 实际全部 18 个端点有 API + Hook + StatsDashboard 等 7 组件，通过 analytics/page.tsx Tab 路由完整可用
+  - ~~H10~~: "批量操作无回滚" — 后端无 batch API 端点，前端不调用批量操作，前提不存在
   - ~~H15~~: 通知 "只有 broadcast 按钮" — 实际有 7 个 API + Hook + NotificationCenterPanel (544 行)，通过 operations/page.tsx Tab 路由完整可用
 - **1 项 P2 删除** (代码验证无证据):
   - ~~M5~~: subscriptions.py 同步调用 — 所有端点 async def，Service 层 Stripe 交互全部 await，无同步阻塞证据
+- **2 项 P3 删除** (代码验证证伪):
+  - ~~L1~~: "Router 缺少 docstring" — campaigns.py 和 experiments.py 实际有完整 docstring
+  - ~~L2~~: "组件缺少 loading 骨架屏" — 57 个 admin 组件中有 436 处 Skeleton/loading 实例
+- **1 项 P1 修正**:
+  - H13: "N+1 查询风险" 证伪 — overrides.py 为 1 次查询 + 内存循环，非 N+1。保留分页限制缺失问题
 - **§1.2 端点统计修正** (4 处):
   - articles.py 端点: 10→7 (实际 @router 装饰器计数)
   - stats 前端调用: 8→18 (analytics/_lib/api.ts 全部 18 个 wrapper)
@@ -545,7 +551,7 @@
   - 合计: 端点 190→187, 前端调用 142→169, 对齐率 75%→90%
 - **§6 新增 3 个表现良好模块**: stats 9/10, metrics 9/10, events 8.5/10
 - **M 系列重编号**: M5→config.py, M6→Stats/Metrics 重叠, M7→tasks stub
-- **统计调整**: P1: 16→12, P2: 8→7, 总计: 34→29
+- **统计调整**: P1: 16→11, P2: 8→7, P3: 2→0, 总计: 34→26
 
 ---
 
@@ -560,13 +566,13 @@
 | 04-audit-staticpages-categories.md | 静态页面 + 资产分类 (C1, M1) |
 | 05-audit-moderation.md | 内容审核 |
 | 06-audit-marketing-experiments.md | 营销活动 + 实验 |
-| 07-audit-notifications-analytics.md | 通知 + Analytics (~~H6/H7/H8/H15 已删~~) |
+| 07-audit-notifications-analytics.md | 通知 + Analytics (~~H6/H7/H8/H10/H15 已删~~) |
 | 08-audit-ai-overrides.md | AI Insights + AI Models + Feature Overrides (C4, C7) |
 | 09-audit-tasks-webhooks-monitoring.md | 任务管理 + Webhook重试 + 用户创建监控 (C6, C10, H11, M7) |
 | 10-audit-logs.md | 日志 & 审计 (→C8, →H11) |
 
 ---
 
-**审计完成 (v2.4)**。共 **8 个 P0** / **12 个 P1** / **7 个 P2** / **2 个 P3** = **29 个问题**。
+**审计完成 (v2.4)**。共 **8 个 P0** / **11 个 P1** / **7 个 P2** / **0 个 P3** = **26 个问题**。
 
 Phase 1 的 8 个 P0 中有 2 个可在 1 小时内修复 (C4/C6)。建议从这 2 个开始启动修复。
