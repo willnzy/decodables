@@ -2136,11 +2136,12 @@ CREATE OR REPLACE FUNCTION cleanup_old_activity_logs(
 )
 RETURNS INTEGER
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 DECLARE
     v_deleted_count INTEGER;
 BEGIN
-    DELETE FROM activity_logs
+    DELETE FROM public.activity_logs
     WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * p_retention_days
       AND action != ALL(p_preserve_actions);  -- Preserve critical events
 
@@ -2161,6 +2162,7 @@ COMMENT ON FUNCTION cleanup_old_activity_logs IS '清理旧的活动日志（保
 CREATE OR REPLACE FUNCTION cleanup_expired_soft_deletes()
 RETURNS JSONB
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 DECLARE
     v_assets INTEGER := 0;
@@ -2169,28 +2171,28 @@ DECLARE
     v_replies INTEGER := 0;
 BEGIN
     -- 1. Purge expired soft-deleted assets
-    DELETE FROM assets
+    DELETE FROM public.assets
     WHERE is_deleted = true
       AND recovery_expires_at IS NOT NULL
       AND recovery_expires_at < CURRENT_TIMESTAMP;
     GET DIAGNOSTICS v_assets = ROW_COUNT;
 
     -- 2. Purge expired soft-deleted projects
-    DELETE FROM projects
+    DELETE FROM public.projects
     WHERE is_deleted = true
       AND recovery_expires_at IS NOT NULL
       AND recovery_expires_at < CURRENT_TIMESTAMP;
     GET DIAGNOSTICS v_projects = ROW_COUNT;
 
     -- 3. Purge expired soft-deleted support tickets
-    DELETE FROM support_tickets
+    DELETE FROM public.support_tickets
     WHERE is_deleted = true
       AND recovery_expires_at IS NOT NULL
       AND recovery_expires_at < CURRENT_TIMESTAMP;
     GET DIAGNOSTICS v_tickets = ROW_COUNT;
 
     -- 4. Purge expired soft-deleted support replies
-    DELETE FROM support_replies
+    DELETE FROM public.support_replies
     WHERE is_deleted = true
       AND recovery_expires_at IS NOT NULL
       AND recovery_expires_at < CURRENT_TIMESTAMP;

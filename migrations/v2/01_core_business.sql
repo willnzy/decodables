@@ -1710,13 +1710,14 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 STABLE
+SET search_path = ''
 AS $$
 DECLARE
     v_total_count BIGINT;
 BEGIN
     SELECT COUNT(*)
     INTO v_total_count
-    FROM marketplace_listings ml
+    FROM public.marketplace_listings ml
     WHERE ml.is_public = true
       AND ml.is_deleted = false
       AND ml.moderation_status = 'approved'
@@ -1759,8 +1760,8 @@ BEGIN
         p.username AS seller_username,
         p.avatar_url AS seller_avatar_url,
         v_total_count AS total_count
-    FROM marketplace_listings ml
-    LEFT JOIN profiles p ON ml.seller_id = p.id
+    FROM public.marketplace_listings ml
+    LEFT JOIN public.profiles p ON ml.seller_id = p.id
     WHERE ml.is_public = true
       AND ml.is_deleted = false
       AND ml.moderation_status = 'approved'
@@ -1815,6 +1816,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 STABLE
+SET search_path = ''
 AS $$
 DECLARE
     v_start_date TIMESTAMPTZ;
@@ -1831,13 +1833,13 @@ BEGIN
     END;
 
     SELECT COUNT(*) INTO v_signups
-    FROM profiles WHERE is_deleted = false AND created_at >= v_start_date;
+    FROM public.profiles WHERE is_deleted = false AND created_at >= v_start_date;
 
     SELECT COUNT(DISTINCT user_id) INTO v_created_project
-    FROM projects WHERE is_deleted = false AND created_at >= v_start_date;
+    FROM public.projects WHERE is_deleted = false AND created_at >= v_start_date;
 
     SELECT COUNT(*) INTO v_converted
-    FROM profiles WHERE is_deleted = false AND tier IN ('t2', 't3') AND created_at >= v_start_date;
+    FROM public.profiles WHERE is_deleted = false AND tier IN ('t2', 't3') AND created_at >= v_start_date;
 
     RETURN QUERY SELECT v_signups, v_created_project, v_converted;
 END;
@@ -2382,6 +2384,7 @@ RETURNS TABLE(
     errors BIGINT
 )
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 BEGIN
     RETURN QUERY
@@ -2390,7 +2393,7 @@ BEGIN
             id,
             created_by,
             created_at
-        FROM profiles
+        FROM public.profiles
         WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
     ),
     stats AS (
@@ -2401,13 +2404,13 @@ BEGIN
             COUNT(DISTINCT CASE WHEN ru.created_by = 'oauth' THEN ru.id END) AS oauth_created,
             (
                 SELECT COUNT(*)
-                FROM user_creation_logs
+                FROM public.user_creation_logs
                 WHERE action = 'duplicate_attempt'
                   AND created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
             ) AS duplicate_attempts,
             (
                 SELECT COUNT(*)
-                FROM user_creation_logs
+                FROM public.user_creation_logs
                 WHERE action = 'error'
                   AND created_at >= CURRENT_TIMESTAMP - INTERVAL '1 day' * p_days
             ) AS errors
@@ -2440,6 +2443,7 @@ RETURNS TABLE(
     hourly_breakdown JSONB
 )
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 DECLARE
     v_today BIGINT;
@@ -2451,22 +2455,22 @@ DECLARE
 BEGIN
     -- 今日创建数
     SELECT COUNT(*) INTO v_today
-    FROM profiles
+    FROM public.profiles
     WHERE DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE;
 
     -- 昨日创建数
     SELECT COUNT(*) INTO v_yesterday
-    FROM profiles
+    FROM public.profiles
     WHERE DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE - INTERVAL '1 day';
 
     -- 本周创建数
     SELECT COUNT(*) INTO v_this_week
-    FROM profiles
+    FROM public.profiles
     WHERE created_at >= date_trunc('week', CURRENT_DATE);
 
     -- 本月创建数
     SELECT COUNT(*) INTO v_this_month
-    FROM profiles
+    FROM public.profiles
     WHERE created_at >= date_trunc('month', CURRENT_DATE);
 
     -- 与昨日相比的变化百分比
@@ -2488,7 +2492,7 @@ BEGIN
         SELECT
             EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')::INTEGER AS hour,
             COUNT(*) AS count
-        FROM profiles
+        FROM public.profiles
         WHERE DATE(created_at AT TIME ZONE 'UTC') = CURRENT_DATE
         GROUP BY EXTRACT(HOUR FROM created_at AT TIME ZONE 'UTC')
     ) c ON h.hour = c.hour;
@@ -2512,6 +2516,7 @@ RETURNS TABLE(
     t3_count BIGINT
 )
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 BEGIN
     RETURN QUERY
@@ -2533,7 +2538,7 @@ BEGIN
             COUNT(*) FILTER (WHERE tier = 't1') AS t1,
             COUNT(*) FILTER (WHERE tier = 't2') AS t2,
             COUNT(*) FILTER (WHERE tier = 't3') AS t3
-        FROM profiles
+        FROM public.profiles
         WHERE created_at >= CURRENT_DATE - INTERVAL '1 day' * p_days
         GROUP BY DATE(created_at AT TIME ZONE 'UTC')
     ) c ON d.date = c.created_date
@@ -2550,11 +2555,12 @@ COMMENT ON FUNCTION get_user_creation_trends IS '获取用户创建趋势数据�
 CREATE OR REPLACE FUNCTION cleanup_old_user_creation_logs(p_retention_days INTEGER DEFAULT 90)
 RETURNS INTEGER
 LANGUAGE plpgsql
+SET search_path = ''
 AS $$
 DECLARE
     v_deleted_count INTEGER;
 BEGIN
-    DELETE FROM user_creation_logs
+    DELETE FROM public.user_creation_logs
     WHERE created_at < CURRENT_TIMESTAMP - INTERVAL '1 day' * p_retention_days;
     
     GET DIAGNOSTICS v_deleted_count = ROW_COUNT;
@@ -3686,6 +3692,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 VOLATILE
+SET search_path = ''
 AS $$
 DECLARE
     v_listing RECORD;
@@ -3697,7 +3704,7 @@ BEGIN
     -- Lock listing row to prevent concurrent modifications
     SELECT id, seller_id, price_credits, status, is_public, is_deleted, moderation_status, title
     INTO v_listing
-    FROM marketplace_listings
+    FROM public.marketplace_listings
     WHERE id = p_listing_id
     FOR UPDATE;
 
@@ -3719,7 +3726,7 @@ BEGIN
     END IF;
 
     -- Idempotent insert: ON CONFLICT returns existing
-    INSERT INTO marketplace_purchases (listing_id, user_id, price_paid, idempotency_key, purchased_at)
+    INSERT INTO public.marketplace_purchases (listing_id, user_id, price_paid, idempotency_key, purchased_at)
     VALUES (p_listing_id, p_buyer_id, p_price, p_idempotency_key, NOW())
     ON CONFLICT (user_id, listing_id) DO NOTHING;
 
@@ -3733,7 +3740,7 @@ BEGIN
     IF p_price > 0 THEN
         SELECT COALESCE(credits_monthly, 0), COALESCE(credits_permanent, 0)
         INTO v_monthly, v_permanent
-        FROM profiles
+        FROM public.profiles
         WHERE id = p_buyer_id
         FOR UPDATE;
 
@@ -3746,18 +3753,18 @@ BEGIN
         v_deduct_monthly := LEAST(v_monthly, p_price);
         v_deduct_permanent := p_price - v_deduct_monthly;
 
-        UPDATE profiles
+        UPDATE public.profiles
         SET credits_monthly = credits_monthly - v_deduct_monthly,
             credits_permanent = credits_permanent - v_deduct_permanent
         WHERE id = p_buyer_id;
 
         -- Record credit transaction
-        INSERT INTO credit_transactions (user_id, amount, transaction_type, description, idempotency_key)
+        INSERT INTO public.credit_transactions (user_id, amount, transaction_type, description, idempotency_key)
         VALUES (p_buyer_id, -p_price, 'purchase', 'Purchase: ' || LEFT(v_listing.title, 50), p_idempotency_key);
     END IF;
 
     -- Update listing stats
-    UPDATE marketplace_listings
+    UPDATE public.marketplace_listings
     SET sales_count = sales_count + 1,
         purchase_count = purchase_count + 1,
         download_count = download_count + 1

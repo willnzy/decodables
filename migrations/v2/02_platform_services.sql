@@ -1299,28 +1299,35 @@ CREATE TABLE IF NOT EXISTS user_onboarding_progress (
 
 -- Atomic view count increment (避免 read-modify-write 竞态条件)
 CREATE OR REPLACE FUNCTION increment_article_view_count(p_article_id UUID)
-RETURNS VOID AS $$
+RETURNS VOID
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
 BEGIN
-    UPDATE articles
+    UPDATE public.articles
     SET view_count = view_count + 1
     WHERE id = p_article_id AND is_deleted = false;
 END;
-$$ LANGUAGE plpgsql;
+$$;
 
 -- Category counts 聚合查询 (替代 N+1 循环)
 CREATE OR REPLACE FUNCTION get_article_category_counts()
-RETURNS TABLE(category TEXT, published_count INTEGER) AS $$
+RETURNS TABLE(category TEXT, published_count INTEGER)
+LANGUAGE plpgsql
+STABLE
+SET search_path = ''
+AS $$
 BEGIN
     RETURN QUERY
     SELECT
         a.category::TEXT,
         COUNT(*) FILTER (WHERE a.is_published = true)::INTEGER AS published_count
-    FROM articles a
+    FROM public.articles a
     WHERE a.is_deleted = false
     GROUP BY a.category
     ORDER BY a.category;
 END;
-$$ LANGUAGE plpgsql STABLE;
+$$;
 
 
 -- ============================================================================
