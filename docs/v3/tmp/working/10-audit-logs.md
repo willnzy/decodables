@@ -21,16 +21,16 @@
 | 编号 | 优先级 | 问题 | 审计维度 |
 |------|--------|------|---------|
 | → C8 | 🔴 P0 | **跨层参数不匹配** — 后端返回 offset/limit/has_more，前端类型定义期望 page/page_size。此为系统性问题，logs 模块尤为明显 (`ErrorLogsResponse`/`OperationLogsResponse`/`AuditLogsResponse`)。详见 01-audit-users.md C8 | D17 |
-| → H12 | 🟡 P1 | **日志格式不统一** — 前端 `adminApiClient.ts` 直接使用 `console.log()` 违反前端日志规范。此为跨模块问题，详见 09-audit-tasks-webhooks-monitoring.md H12 | D23 + CL-4.2 |
+| → H11 | 🟡 P1 | **日志格式不统一** — 前端 `adminApiClient.ts` 直接使用 `console.log()` 违反前端日志规范。此为跨模块问题，详见 09-audit-tasks-webhooks-monitoring.md H11 | D23 + CL-4.2 |
 | - | 🟡 P2 | /logs/audit 端点后端完整实现 (含 6 个过滤字段) 但前端无对应 UI | D9 |
 | - | 🔴 P0 | 文档完全缺失 (5 端点零文档覆盖) | D2 |
 
-> **编号说明**: `→ C8` 和 `→ H12` 表示该问题的主条目在其他文件中定义，本文件为交叉引用。C8 首次发现于 01-audit-users.md (系统级问题)，H12 首次定义于 09-audit-tasks-webhooks-monitoring.md (跨模块日志问题)。
+> **编号说明**: `→ C8` 和 `→ H11` 表示该问题的主条目在其他文件中定义，本文件为交叉引用。C8 首次发现于 01-audit-users.md (系统级问题)，H11 首次定义于 09-audit-tasks-webhooks-monitoring.md (跨模块日志问题)。
 
 ### 修复建议
 
 1. **C8**: 前端 `admin/_lib/types.ts` 中 `ErrorLogsResponse`/`OperationLogsResponse` 类型改为 `offset/limit/has_more`，`admin/_lib/api.ts` 中参数从 `page/page_size` 改为 `offset/limit`
-2. **H12**: 前端 `adminApiClient.ts` 中 `console.log()` 替换为 Logger 类调用
+2. **H11**: 前端 `adminApiClient.ts` 中 `console.log()` 替换为 Logger 类调用
 
 ## C. 总评
 

@@ -48,7 +48,7 @@
 |------|--------|------|---------|
 | C5 | 🔴 P0 | **tiers.py DDD 违规** — 直接实例化 `TierConfigRepository()` 而非通过 Container DI 注入，违反架构规范，无法统一管理生命周期和测试 mock | D5 + CL-3.3 |
 | H3 | 🟡 P1 | **feature_flags.py 全局 Service 导入** — 在模块级导入 `feature_service` 全局实例而非通过 Container DI，测试时无法 mock，生命周期管理不一致 | D5 + CL-3.3 |
-| M7 | 🟢 P2 | **config.py batch_update_configs 无事务保护** — 批量更新多个配置项非原子操作，部分失败时状态不一致 | D19 |
+| M6 | 🟢 P2 | **config.py batch_update_configs 无事务保护** — 批量更新多个配置项非原子操作，部分失败时状态不一致 | D19 |
 | - | ⚠️ | updateRateLimit() 前端调用后端不存在的端点 | D9 |
 | - | ⚠️ | v3 文档骨架待补充 | D2 |
 
@@ -65,7 +65,7 @@
 
 1. **C5**: tiers.py 迁移到 `container.tier_config_service` 注入模式 (参考 config.py 实现)
 2. **H3**: feature_flags.py 改为 `Depends(get_feature_service)` 依赖注入
-3. **M7**: batch_update_configs 包裹在数据库事务中，或改用 RPC 原子操作
+3. **M6**: batch_update_configs 包裹在数据库事务中，或改用 RPC 原子操作
 
 ## 5. 总评
 
@@ -84,5 +84,5 @@
 
 - D5 (DDD 合规): 🔴 C5 — tiers.py 直接创建 Repository; H3 — feature_flags.py 全局导入
 - D17 (参数一致性): ✅ 无显著问题
-- D19 (批量原子性): 🟡 M7 — batch_update_configs 非原子
+- D19 (批量原子性): 🟡 M6 — batch_update_configs 非原子
 - D25 (性能): ✅ 无 N+1 风险
