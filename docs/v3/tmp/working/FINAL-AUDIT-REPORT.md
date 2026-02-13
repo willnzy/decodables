@@ -36,7 +36,7 @@
 | 内容审核 (moderation) | 10 | 10 | 100% | ✅ |
 | 营销活动 (campaigns) | 8 | 8 | 100% | 🔴 无文档 |
 | 实验 (experiments) | 14 | 14 | 100% | 🔴 无文档 |
-| 通知 (notifications) | 11 | 1 | 9% | 🔴 无文档 |
+| 通知 (notifications) | 11 | 7 | 64% | 🔴 无文档 |
 | 统计 (stats) | 18 | 18 | 100% | 🔴 无文档 |
 | 指标 (metrics) | 7 | 7 | 100% | 🔴 无文档 |
 | 事件 (events) | 5 | 5 | 100% | 🔴 无文档 |
@@ -47,19 +47,19 @@
 | Webhook重试 (webhooks_retry) | 2 | 2 | 100% | 🔴 无文档 |
 | 用户监控 (user_creation_monitoring) | 5 | 3 | 60% | 🔴 无文档 |
 | 日志 (logs) | 5 | 4 | 80% | 🔴 无文档 |
-| **合计** | **187** | **163** | **87%** | **~35%** |
+| **合计** | **187** | **169** | **90%** | **~35%** |
 
 ### 1.3 问题统计汇总
 
 | 严重度 | 数量 | 说明 |
 |--------|:---:|------|
 | 🔴 P0 (Critical) | **8** | 功能不可用 / 运行时错误 / 安全漏洞 |
-| 🟡 P1 (High) | **13** | 功能降级 / 架构违规 / 一致性缺失 |
+| 🟡 P1 (High) | **12** | 功能降级 / 架构违规 / 一致性缺失 |
 | 🟢 P2 (Medium) | **7** | 代码质量 / 文档缺失 / 优化建议 |
 | ⚪ P3 (Low) | **2** | 微小改进 |
-| **总计** | **30** | |
+| **总计** | **29** | |
 
-> v2.4 变化: 深度代码验证删除 H6/H7/H8 (前端实际完整) + 删除 M5 (代码无同步阻塞证据)，修正 §1.2 端点统计
+> v2.4 变化: 深度代码验证删除 H6/H7/H8/H15 (前端实际完整) + 删除 M5 (代码无同步阻塞证据)，修正 §1.2 端点统计
 
 ---
 
@@ -81,14 +81,9 @@
 - **修复**: 前端切换到新 Tier 管理流程 (通过 Stripe)
 - **详见**: 01-audit-users.md §3
 
-### ~~C3~~ → H15: 通知模板 CRUD 无前端 UI ⚡ *v2.3 降级: P0→P1*
-- **文件**: `api/admin/notifications.py` — 6 个模板端点
-- **问题**: 后端已实现完整的草稿→发送工作流，但前端只有 broadcast 按钮
-- **影响**: 新增的通知管理功能无法使用 (后端正常，无运行时错误)
-- **降级理由**: 后端 API 功能正常，仅缺前端 UI 暴露，不满足 P0 "功能不可用/运行时错误" 定义
-- **维度**: D9
-- **修复**: 创建 NotificationTemplatePanel 前端组件
-- **详见**: 07-audit-notifications-analytics.md §A
+### ~~C3~~ → ~~H15~~: ❌ v2.4 删除 — 通知前端实际完整 ⚡ *v2.3 降级 P0→P1, v2.4 删除*
+> **删除理由**: 代码验证发现 `operations/_lib/api.ts` 包含 7 个通知 API 调用 (list/get/create/update/delete/send/history)，`operations/_hooks/useOperations.ts` 提供对应 Hook，`operations/_components/NotificationCenterPanel.tsx` (544 行) 完整实现模板管理 UI。通过 `operations/page.tsx` Tab 路由 (`{ id: 'notifications', component: NotificationCenterPanel }`)，管理员可正常访问。11 个后端端点中 7 个有前端覆盖 (64%)，非原称的 "只有 broadcast 按钮" (9%)。
+> 剩余 4 个未覆盖端点: `POST /broadcast`, `POST /notification/send`, `POST /notification/batch`, `GET /notification/stats` — 属于批量/统计类辅助功能，不构成独立 P1 问题。
 
 ### C4: AI Models update_admin_config 占位符
 - **文件**: `api/admin/ai_models.py` → PUT /ai/models/config/admin
@@ -258,7 +253,7 @@
 - **详见**: 03-audit-themes-articles.md §B
 
 > **关于 C3/C5/C9 降级**: 这三个问题已标注在 §2 原位，但其优先级已从 P0 降级为 P1。新编号 H15/H16/H17，详细降级理由见各条目。
-> **关于 H6/H7/H8 删除 (v2.4)**: 代码验证证伪"无前端"结论，详见各条目删除理由。
+> **关于 H6/H7/H8/H15 删除 (v2.4)**: 代码验证证伪"无前端"结论，详见 §2 (H15) 和 §3 (H6/H7/H8) 各条目删除理由。
 
 ---
 
@@ -443,7 +438,7 @@
 | 4 | H4: Themes preview + jobId 子端点实现 | 3h |
 | 5 | H16 (原C5): tiers.py 迁移到 Container DI | 1h |
 | 6 | H14: Articles 筛选参数后端实现 | 2h |
-| 7 | H15 (原C3): 通知模板前端组件 | 8h |
+| 7 | ~~H15 (原C3)~~: v2.4 删除 — 前端已完整 | — |
 | 8 | H17 (原C9): 建立错误码系统 + 前端转换 | 4h |
 | 9 | H9: 清理约 40 个空 catch 块 | 4h |
 | 10 | H10: 批量操作回滚机制 | 4h |
@@ -534,10 +529,11 @@
 
 **方法论升级**: 深度代码验证 — 扩展到 P2 级问题 + §1.2 端点统计 + §6 模块评分的逐一代码核实
 
-- **3 项 P1 删除** (代码验证证伪原审计结论):
+- **4 项 P1 删除** (代码验证证伪原审计结论):
   - ~~H6~~: Metrics "无前端" — 实际有 7 个 API + 7 Hook + MetricsPanel 等 4 组件，通过 analytics/page.tsx Tab 路由完整可用
   - ~~H7~~: Events "无前端" — 实际有 5 个 API + 5 Hook + EventsPanel (334 行)，通过 analytics/page.tsx Tab 路由完整可用
   - ~~H8~~: Stats "10 端点无前端" — 实际全部 18 个端点有 API + Hook + StatsDashboard 等 7 组件，通过 analytics/page.tsx Tab 路由完整可用
+  - ~~H15~~: 通知 "只有 broadcast 按钮" — 实际有 7 个 API + Hook + NotificationCenterPanel (544 行)，通过 operations/page.tsx Tab 路由完整可用
 - **1 项 P2 删除** (代码验证无证据):
   - ~~M5~~: subscriptions.py 同步调用 — 所有端点 async def，Service 层 Stripe 交互全部 await，无同步阻塞证据
 - **§1.2 端点统计修正** (4 处):
@@ -545,10 +541,11 @@
   - stats 前端调用: 8→18 (analytics/_lib/api.ts 全部 18 个 wrapper)
   - metrics 前端调用: 0→7 (7 个完整 wrapper + useMetrics hook)
   - events 前端调用: 0→5 (5 个完整 wrapper + useEvents hook)
-  - 合计: 端点 190→187, 前端调用 142→163, 对齐率 75%→87%
+  - notifications 前端调用: 1→7 (完整 CRUD + send + history)
+  - 合计: 端点 190→187, 前端调用 142→169, 对齐率 75%→90%
 - **§6 新增 3 个表现良好模块**: stats 9/10, metrics 9/10, events 8.5/10
 - **M 系列重编号**: M5→config.py, M6→Stats/Metrics 重叠, M7→tasks stub
-- **统计调整**: P1: 16→13, P2: 8→7, 总计: 34→30
+- **统计调整**: P1: 16→12, P2: 8→7, 总计: 34→29
 
 ---
 
@@ -563,13 +560,13 @@
 | 04-audit-staticpages-categories.md | 静态页面 + 资产分类 (C1, M1) |
 | 05-audit-moderation.md | 内容审核 |
 | 06-audit-marketing-experiments.md | 营销活动 + 实验 |
-| 07-audit-notifications-analytics.md | 通知 + Analytics (H15, ~~H6/H7/H8 已删~~) |
+| 07-audit-notifications-analytics.md | 通知 + Analytics (~~H6/H7/H8/H15 已删~~) |
 | 08-audit-ai-overrides.md | AI Insights + AI Models + Feature Overrides (C4, C7) |
 | 09-audit-tasks-webhooks-monitoring.md | 任务管理 + Webhook重试 + 用户创建监控 (C6, C10, H11, M7) |
 | 10-audit-logs.md | 日志 & 审计 (→C8, →H11) |
 
 ---
 
-**审计完成 (v2.4)**。共 **8 个 P0** / **13 个 P1** / **7 个 P2** / **2 个 P3** = **30 个问题**。
+**审计完成 (v2.4)**。共 **8 个 P0** / **12 个 P1** / **7 个 P2** / **2 个 P3** = **29 个问题**。
 
 Phase 1 的 8 个 P0 中有 2 个可在 1 小时内修复 (C4/C6)。建议从这 2 个开始启动修复。
