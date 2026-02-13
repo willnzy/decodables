@@ -1,6 +1,10 @@
-# 审计报告：用户管理模块 (含订阅)
+# 01 - 用户管理 (含订阅) 审计报告
 
-## 1. 文档一致性检查
+> 审计时间: 2026-02-12 ~ 2026-02-13 | 后端: users.py, subscriptions.py | 前端: /admin/users
+
+---
+
+## 1. 文档一致性
 
 | 检查项 | v2-users.md | v2-user-ops.md | v3-users.md | 一致性 |
 |--------|------------|----------------|------------|--------|
@@ -56,33 +60,38 @@
 | POST /subscription/cancel | ✅ | ✅ |
 | POST /subscription/downgrade | ✅ | ✅ |
 
-## 4. 总结
-
-| 检查项 | 状态 | 详情 |
-|--------|------|------|
-| 文档内部一致性 | ❌ | 三份文档5处直接冲突 |
-| 文档→API 完整性 | ⚠️ | v3遗漏3项功能，列出已废弃API |
-| API→前端完整性 | ⚠️ | 4个有效API未调用；前端仍调用已废弃Tier API |
-| 关键缺陷 | ❌ | POST /users/{user_id}/tier 已返回410，前端仍调用 |
-| 参数不对齐 | ❌ | 前端q/page/page_size vs 后端search/offset/limit |
-| 字段映射 | ⚠️ | 前端credit_type vs 后端bucket |
-
-**总体评分**: 🔴 低 — 优先修复废弃API调用 > 参数对齐 > 文档统一 > 功能补全
-
----
-
-## v2.0 审计补充 (2026-02-13)
-
-### 新增发现
+## 4. 问题清单
 
 | 编号 | 优先级 | 问题 | 审计维度 |
 |------|--------|------|---------|
-| H1 | 🟡 P1 | users.py Tier 过滤使用 `free/starter/pro` 字符串而非标准 `t1/t2/t3/t4` 系统代码，若 Tier 显示名称修改过滤逻辑会失效 | D4 (业务规则) |
-| H2 | 🟡 P1 | subscriptions.py 的 `VALID_TARGET_TIERS` 白名单缺少 `t3` (Pro Plan)，管理员无法将用户切换到 Pro Plan | D4 (业务规则) |
-| C8 | 🔴 P0 | 前端 `admin/_lib/types.ts` 使用 `page/page_size`，后端已迁移到 `offset/limit` (v3.26+)，运行时分页失败 — **从 v1.0 的 P1 升级为 P0** | D17 (跨层参数一致性) |
+| C8 | 🔴 P0 | **跨层参数不匹配** — 前端 `admin/_lib/types.ts` 使用 `page/page_size`，后端已迁移到 `offset/limit` (v3.26+)，运行时分页失败。此问题为系统性问题，影响 users/logs/monitoring 等多个模块 | D17 |
+| H1 | 🟡 P1 | **Tier 过滤使用显示名称** — users.py 的 by-tier 过滤使用 `free/starter/pro` 字符串而非标准 `t1/t2/t3/t4` 系统代码，若 Tier 显示名称修改则过滤逻辑失效 | D4 |
+| H2 | 🟡 P1 | **订阅 Tier 白名单缺失** — subscriptions.py 的 `VALID_TARGET_TIERS` 白名单缺少 `t3` (Pro Plan)，管理员无法将用户切换到 Pro Plan | D4 |
+| - | 🟡 P1 | 前端仍调用已废弃 POST /users/{user_id}/tier (返回 410) | D9 |
+| - | ⚠️ | 4 个有效 API 端点前端未调用 (by-tier, PATCH, discount, feed) | D9 |
+| - | ⚠️ | 前端 credit_type vs 后端 bucket 字段映射不统一 | D10 |
 
 ### 修复建议
 
-1. **H1**: 将 users.py 中 `free/starter/pro` 替换为 `TIER_T1/TIER_T2/TIER_T3` 常量 (from `domains.identity.constants`)
-2. **H2**: 在 `VALID_TARGET_TIERS` 列表中添加 `t3`
-3. **C8**: 前端统一迁移到 offset/limit 参数模式，或在 API 层添加兼容转换
+1. **C8**: 前端 `admin/_lib/types.ts` 中分页类型从 `page/page_size` 改为 `offset/limit`，或 API 层添加兼容转换
+2. **H1**: users.py 中 `free/starter/pro` 替换为 `TIER_T1/TIER_T2/TIER_T3` 常量
+3. **H2**: `VALID_TARGET_TIERS` 列表添加 `t3`
+
+## 5. 总评
+
+| 检查项 | 状态 | 详情 |
+|--------|------|------|
+| 文档一致性 | ❌ | 三份文档 5 处直接冲突 |
+| 文档→API | ⚠️ | v3 遗漏 3 项功能，含已废弃 API |
+| API→前端 | ⚠️ | 4 个有效 API 未调用；前端仍调用已废弃 Tier API |
+| DDD 合规 | ✅ | users.py/subscriptions.py 均通过 Container DI |
+| 安全加固 | ✅ | 速率限制已配置 |
+
+**总体评分**: 🔴 低 — 优先修复废弃 API 调用 > C8 参数对齐 > 文档统一 > 功能补全
+
+## 6. 跨层审计 (D17-D25) 复核
+
+- D17 (参数一致性): 🔴 C8 — page/page_size vs offset/limit 系统性不匹配
+- D18 (错误处理): ✅ 遵循标准模式
+- D22 (鉴权): ✅ 认证 100%
+- D25 (性能): ✅ 无 N+1 风险
