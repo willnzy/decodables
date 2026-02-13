@@ -1,6 +1,6 @@
-# Admin 功能全面审计报告 v2.2
+# Admin 功能全面审计报告 v2.3
 
-> **审计日期**: 2026-02-12 (v1.0) → 2026-02-13 (v2.0) → 2026-02-13 (v2.1 整合修订) → 2026-02-13 (v2.2 数据校验)
+> **审计日期**: 2026-02-12 (v1.0) → 2026-02-13 (v2.0→v2.2) → 2026-02-13 (v2.3 代码验证修订)
 > **审计标准**: `audit-standard.md` v1.2 (25 维度 × 36 检查清单 × 287 检查项)
 > **审计范围**: 21 个后端 Router + 全部前端 Admin 页面 + 跨层一致性
 > **审计方法**: 4 轮并行 Agent 审计 (后端 Batch1-2 / Batch3-4 / 前端 / 跨层 D17-D25)
@@ -53,22 +53,22 @@
 
 | 严重度 | 数量 | 说明 |
 |--------|:---:|------|
-| 🔴 P0 (Critical) | **10** | 功能不可用 / 运行时错误 / 安全漏洞 |
-| 🟡 P1 (High) | **13** | 功能降级 / 架构违规 / 一致性缺失 |
-| 🟢 P2 (Medium) | **7** | 代码质量 / 文档缺失 / 优化建议 |
+| 🔴 P0 (Critical) | **8** | 功能不可用 / 运行时错误 / 安全漏洞 |
+| 🟡 P1 (High) | **16** | 功能降级 / 架构违规 / 一致性缺失 |
+| 🟢 P2 (Medium) | **8** | 代码质量 / 文档缺失 / 优化建议 |
 | ⚪ P3 (Low) | **2** | 微小改进 |
-| **总计** | **32** | |
+| **总计** | **34** | |
 
-> v2.1 变化: 合并 C8+M8 (分页问题)、合并 C1+M5 (asset_categories)，总数从 34 调整为 32
+> v2.3 变化: 代码验证后调整优先级 (C3/C5/C9 降级 P1, H5 升级 P0)，新增 H14/M8，总计 32→34
 
 ---
 
 ## 2. 🔴 Critical 问题 (P0 — 功能不可用/安全漏洞)
 
-### C1: 资产分类模块完全不可用
+### C1: 资产分类模块标识符 + HTTP 方法不一致
 - **文件**: `api/admin/asset_categories.py` ↔ 前端 `admin/content`
-- **问题**: 后端用 `slug` 标识资源，前端用 `id`；PUT vs PATCH 不匹配；字段名全错 (type vs asset_type, is_active vs is_visible/is_featured)
-- **影响**: 所有 CRUD 操作都会失败
+- **问题**: 后端用 `slug` 标识资源，前端用 `id`；PUT vs PATCH HTTP 方法不匹配 (字段名 asset_type/is_visible/is_featured 经代码验证实际对齐)
+- **影响**: 更新/删除操作因标识符和方法不一致而失败
 - **维度**: D1 + D17
 - **修复**: 统一标识符 + HTTP 方法 + 字段映射
 - **详见**: 04-audit-staticpages-categories.md §B
@@ -81,10 +81,11 @@
 - **修复**: 前端切换到新 Tier 管理流程 (通过 Stripe)
 - **详见**: 01-audit-users.md §3
 
-### C3: 通知模板 CRUD 无前端 UI
+### ~~C3~~ → H15: 通知模板 CRUD 无前端 UI ⚡ *v2.3 降级: P0→P1*
 - **文件**: `api/admin/notifications.py` — 6 个模板端点
 - **问题**: 后端已实现完整的草稿→发送工作流，但前端只有 broadcast 按钮
-- **影响**: 新增的通知管理功能无法使用
+- **影响**: 新增的通知管理功能无法使用 (后端正常，无运行时错误)
+- **降级理由**: 后端 API 功能正常，仅缺前端 UI 暴露，不满足 P0 "功能不可用/运行时错误" 定义
 - **维度**: D9
 - **修复**: 创建 NotificationTemplatePanel 前端组件
 - **详见**: 07-audit-notifications-analytics.md §A
@@ -97,10 +98,11 @@
 - **修复**: 实现或删除该端点
 - **详见**: 08-audit-ai-overrides.md §B
 
-### C5: tiers.py DDD 违规 — 直接创建 Repository
-- **文件**: `api/admin/tiers.py`
-- **问题**: 直接实例化 Repository (`TierConfigRepository()`) 而非通过 Container DI
+### ~~C5~~ → H16: tiers.py DDD 违规 — 直接创建 Repository ⚡ *v2.3 降级: P0→P1*
+- **文件**: `api/admin/tiers.py` (4 处直接实例化: line 118/171/266/355)
+- **问题**: 直接实例化 Repository (`SupabaseConfigRepository()`) 而非通过 Container DI
 - **影响**: 违反 DDD 架构规范，无法统一管理生命周期和测试 mock
+- **降级理由**: Tier 功能运行时完全正常，仅架构不合规，不满足 P0 "功能不可用/运行时错误" 定义
 - **维度**: D5 + CL-3.3
 - **修复**: 迁移到 Container-based DI 模式
 - **详见**: 02-audit-configs.md §4
@@ -141,13 +143,14 @@
 - **修复**: 前端统一迁移到 offset/limit，或后端兼容层
 - **详见**: 01-audit-users.md §4, 10-audit-logs.md §B
 
-### C9: 缺失统一错误处理链路
+### ~~C9~~ → H17: 缺失统一错误处理链路 ⚡ *v2.3 降级: P0→P1*
 - **文件**: 前端 `admin/_lib/adminApiClient.ts` + 后端多个 Router
 - **问题**:
   - 后端 overrides.py 直接返回 `HTTPException(500, "...")` 无错误码分类
   - 前端 adminApiClient.ts 仅捕获异常做日志，无 `getUserFriendlyMessage()` 转换
   - 用户面对原始技术错误消息
 - **影响**: 管理员看到技术错误信息，影响操作体验和安全
+- **降级理由**: 错误消息不友好但功能本身可用，不导致崩溃，属于"功能降级"而非"功能不可用"
 - **维度**: D18 + CL-3.9
 - **修复**: 建立 Admin 错误码系统 + 前端错误友好化转换
 
@@ -161,6 +164,15 @@
 - **维度**: D5 + D6 + CL-3.10
 - **修复**: 迁移到 Container DI + 添加限流 + 邮箱脱敏
 - **详见**: 09-audit-tasks-webhooks-monitoring.md §C
+
+### ~~H5~~ → C11: Articles 辅助端点缺失 ⚡ *v2.3 升级: P1→P0*
+- **文件**: `api/admin/articles.py` ↔ 前端 `admin/articles/_lib/api.ts`
+- **问题**: 前端调用 `GET /articles/check-slug` 和 `GET /articles/stats`，但后端无对应端点，运行时返回 404
+- **影响**: slug 唯一性校验和文章统计功能直接报错
+- **升级理由**: 前端已实际调用 (api.ts line 128/147)，后端完全不存在，运行时 404 符合 P0 定义
+- **维度**: D1
+- **修复**: 后端实现 check-slug + stats 端点
+- **详见**: 03-audit-themes-articles.md §B
 
 ---
 
@@ -184,18 +196,16 @@
 - **影响**: 测试时无法 mock，生命周期管理不一致
 - **维度**: D5 + CL-3.3
 
-### H4: Themes 批量生成端点缺失
-- **文件**: `api/admin/themes.py`
-- **问题**: 前端调用 batch-generate/preview 和 status 端点，但后端未实现
-- **影响**: 批量主题生成功能完全不可用
+### H4: Themes 批量生成子端点缺失
+- **文件**: `api/admin/themes.py` ↔ 前端 `admin/themes/_lib/api.ts`
+- **问题**: `POST /batch-generate` 和 `GET /generation-status` 后端已实现 ✅，但前端还调用两个子端点后端未实现:
+  - `GET /themes/batch-generate/preview` — 预览生成计划 ❌
+  - `GET /themes/batch-generate/{jobId}` — 查询单次生成任务状态 ❌
+- **影响**: 批量生成可启动，但无法预览和查询单任务状态
 - **维度**: D1
 - **详见**: 03-audit-themes-articles.md §A
 
-### H5: Articles 辅助端点缺失
-- **文件**: `api/admin/articles.py`
-- **问题**: check-slug (slug 唯一性) 和 stats (文章统计) 端点前端需要但后端未实现
-- **维度**: D1
-- **详见**: 03-audit-themes-articles.md §B
+### ~~H5~~: → 升级为 C11 (P0)，见 §2
 
 ### H6: Metrics 全部 7 端点无前端
 - **文件**: `api/admin/metrics.py` — daily/monthly/retention/funnel/errors/dau-trend/refresh
@@ -218,7 +228,7 @@
 - **维度**: D9
 - **详见**: 07-audit-notifications-analytics.md §B
 
-### H9: 前端约 20 个空 catch 块
+### H9: 前端约 40 个空 catch 块
 - **文件**: 多个前端 Admin 组件 (AssetCategoriesPanel, MarketplaceModerationPanel, StaticPagesPanel 等)
 - **问题**: `catch (error) {}` 或 `catch (e) { /* empty */ }` — 异常被静默吞掉
 - **影响**: 错误无法追踪，用户操作失败但无任何反馈
@@ -251,6 +261,15 @@
 - **文件**: `api/admin/overrides.py`, `api/admin/logs.py`, 多个前端组件
 - **问题**: overrides.py 循环构造 response；后端 limit 最大 100 但前端无对应限制
 - **维度**: D25 + CL-4.4
+
+### H14: Articles 前端筛选参数后端不处理 🆕 *v2.3 新增*
+- **文件**: `api/admin/articles.py` ↔ 前端 articles 组件
+- **问题**: 前端传递 `search/status/sort_by/sort_order` 四个筛选参数，但后端完全不处理，查询结果忽略筛选条件
+- **影响**: 文章搜索、状态过滤、排序功能静默失败 (不报错但结果不正确)
+- **维度**: D17
+- **详见**: 03-audit-themes-articles.md §B
+
+> **关于 C3/C5/C9 降级**: 这三个问题已标注在 §2 原位，但其优先级已从 P0 降级为 P1。新编号 H15/H16/H17，详细降级理由见各条目。
 
 ---
 
@@ -297,6 +316,13 @@
 - **问题**: retention/funnel 在 stats.py 和 metrics.py 两处均有类似端点，增加维护成本
 - **维度**: D1
 
+### M8: tasks_mgmt 前端 stub 函数无后端对应 🆕 *v2.3 新增*
+- **文件**: 前端 tasks 管理组件
+- **问题**: 前端定义了 `cancelTask()` / `retryTask()` stub 函数，但后端无对应 cancel/retry 端点
+- **影响**: 按钮存在但点击无效 (若已绑定到 UI)
+- **维度**: D1 + D9
+- **详见**: 09-audit-tasks-webhooks-monitoring.md
+
 ---
 
 ## 5. ⚪ Low 问题 (P3 — 微小改进)
@@ -322,7 +348,7 @@
 | 内容审核 (moderation) | 8.8/10 | 10 端点 100% 前端调用 |
 | 营销活动 (campaigns) | 8/10 | 8 端点 100% 前端调用 (缺文档) |
 | 实验 (experiments) | 8/10 | 14 端点 100% 前端调用 (缺文档) |
-| Tier 管理 (tiers) | 7.5/10 | 3 端点全部对齐 (扣分: C5 DI 违规) |
+| Tier 管理 (tiers) | 7.5/10 | 3 端点全部对齐 (扣分: H16 DI 违规) |
 | 日志 (logs) | 8/10 | 结构化日志 + Container DI ✅ |
 | 任务管理 | 7/10 | 4 端点对齐 (扣分: C6 缺 await P0) |
 
@@ -408,15 +434,13 @@
 | # | 问题 | 工作量 | 风险 |
 |---|------|:---:|:---:|
 | 1 | C6: tasks_mgmt.py 添加 await | 5min | 🟢 低 |
-| 2 | C2: 用户 Tier 变更切到新流程 | 2h | 🟡 中 |
-| 3 | C1: 资产分类统一 slug/id + 字段名 | 4h | 🟡 中 |
-| 4 | C4: AI Models 占位符 — 实现或删除 | 1h | 🟢 低 |
-| 5 | C5: tiers.py 迁移到 Container DI | 1h | 🟢 低 |
+| 2 | C4: AI Models 占位符 — 实现或删除 | 1h | 🟢 低 |
+| 3 | C11: Articles check-slug + stats 端点实现 | 3h | 🟢 低 |
+| 4 | C2: 用户 Tier 变更切到新流程 | 2h | 🟡 中 |
+| 5 | C1: 资产分类统一 slug/id + HTTP 方法 | 3h | 🟡 中 |
 | 6 | C8: 前端分页参数统一 offset/limit | 4h | 🟡 中 |
-| 7 | C9: 建立错误码系统 + 前端转换 | 4h | 🟡 中 |
-| 8 | C10: user_creation_monitoring 全面迁移 | 3h | 🟢 低 |
-| 9 | C7: overrides.py 全面重构 | 6h | 🔴 高 |
-| 10 | C3: 通知模板前端组件 | 8h | 🟡 中 |
+| 7 | C10: user_creation_monitoring 全面迁移 | 3h | 🟢 低 |
+| 8 | C7: overrides.py 全面重构 | 6h | 🔴 高 |
 
 ### Phase 2: 架构修复 (P1 — 3-5 天)
 
@@ -425,13 +449,16 @@
 | 1 | H1: users.py Tier 枚举标准化 | 1h |
 | 2 | H2: subscriptions 添加 t3 | 15min |
 | 3 | H3: feature_flags DI 迁移 | 1h |
-| 4 | H4: Themes batch-generate 实现 | 4h |
-| 5 | H5: Articles check-slug + stats 实现 | 3h |
-| 6 | H9: 清理约 20 个空 catch 块 | 3h |
-| 7 | H10: 批量操作回滚机制 | 4h |
-| 8 | H11: 日志格式统一 | 2h |
-| 9 | H12: RBAC 设计 (方案阶段) | 4h |
-| 10 | H13: N+1 优化 + 分页限制 | 3h |
+| 4 | H4: Themes preview + jobId 子端点实现 | 3h |
+| 5 | H16 (原C5): tiers.py 迁移到 Container DI | 1h |
+| 6 | H14: Articles 筛选参数后端实现 | 2h |
+| 7 | H15 (原C3): 通知模板前端组件 | 8h |
+| 8 | H17 (原C9): 建立错误码系统 + 前端转换 | 4h |
+| 9 | H9: 清理约 40 个空 catch 块 | 4h |
+| 10 | H10: 批量操作回滚机制 | 4h |
+| 11 | H11: 日志格式统一 | 2h |
+| 12 | H12: RBAC 设计 (方案阶段) | 4h |
+| 13 | H13: N+1 优化 + 分页限制 | 3h |
 
 ### Phase 3: 功能完善 (P1-P2 — 1-2 周)
 
@@ -446,6 +473,7 @@
 | 7 | M5: subscriptions.py 同步调用排查 | 2h |
 | 8 | M6: config.py batch_update 事务保护 | 2h |
 | 9 | M7: Stats vs Metrics 功能重叠整理 | 4h |
+| 10 | M8: tasks_mgmt cancelTask/retryTask 实现 | 2h |
 
 ### Phase 4: 文档补全 + 低优先级 (P2-P3)
 
@@ -496,6 +524,25 @@
 - **补全路线图**: Phase 3 新增 M2/M5/M6/M7；Phase 4 新增 L1/L2
 - **修正 v2.0 日志**: DDD 合规率 74% (17/23) → 83% (19/23)
 
+### v2.2 → v2.3 变更 (2026-02-13)
+
+**方法论升级**: 从数据准确性修正扩展到三维度根源验证 (FINAL↔模块文件交叉校验 + 实际代码上下文验证 + 优先级合理性复核)
+
+- **3 项 P0→P1 降级** (代码验证确认运行时无故障):
+  - C3→H15: 通知模板前端缺失 — 后端 100% 完整，仅无前端 UI
+  - C5→H16: tiers.py DI 违规 — 4 处直接实例化 (line 118/171/266/355) 但运行时正常
+  - C9→H17: 错误处理暴露技术细节 — 不影响功能运行
+- **1 项 P1→P0 升级**:
+  - H5→C11: Articles check-slug + stats 端点 — 前端 api.ts line 128/147 调用不存在的后端端点，运行时 404
+- **2 项新增问题**:
+  - H14 (P1): Articles search/status/sort_by/sort_order 前端传递但后端不处理 (03-audit 已记录)
+  - M8 (P2): tasks_mgmt cancelTask/retryTask 前端存根无后端实现 (09-audit 已记录)
+- **3 项事实修正**:
+  - C1: 移除"字段名全错"描述 — 代码验证 asset_type/is_visible/is_featured 实际对齐，仅 slug↔id + PUT↔PATCH 不一致
+  - H4: 修正端点缺失范围 — POST /batch-generate 和 GET /generation-status 实际存在，仅 preview 和 jobId 子端点缺失
+  - H9: 空 catch 块数量 ~20→~40 (代码 grep 精确计数)
+- **统计调整**: P0: 10→8, P1: 13→16, P2: 7→8, 总计: 32→34
+
 ---
 
 ## 11. 详细审计文件索引
@@ -504,18 +551,18 @@
 |------|----------|
 | 00-audit-framework.md | 审计框架 (25 维度 + DDD 检查方法) |
 | 01-audit-users.md | 用户管理 + 订阅 (C8, H1, H2) |
-| 02-audit-configs.md | 配置 / Tier / Feature Flags / 系统运维 (C5, H3, M6) |
-| 03-audit-themes-articles.md | 主题 + 文章 (H4, H5) |
+| 02-audit-configs.md | 配置 / Tier / Feature Flags / 系统运维 (H16, H3, M6) |
+| 03-audit-themes-articles.md | 主题 + 文章 (H4, C11, H14) |
 | 04-audit-staticpages-categories.md | 静态页面 + 资产分类 (C1, M1) |
 | 05-audit-moderation.md | 内容审核 |
 | 06-audit-marketing-experiments.md | 营销活动 + 实验 |
-| 07-audit-notifications-analytics.md | 通知 + Analytics (C3, H6-H8) |
+| 07-audit-notifications-analytics.md | 通知 + Analytics (H15, H6-H8) |
 | 08-audit-ai-overrides.md | AI Insights + AI Models + Feature Overrides (C4, C7) |
-| 09-audit-tasks-webhooks-monitoring.md | 任务管理 + Webhook重试 + 用户创建监控 (C6, C10, H11) |
+| 09-audit-tasks-webhooks-monitoring.md | 任务管理 + Webhook重试 + 用户创建监控 (C6, C10, H11, M8) |
 | 10-audit-logs.md | 日志 & 审计 (→C8, →H11) |
 
 ---
 
-**审计完成 (v2.2)**。共 **10 个 P0** / **13 个 P1** / **7 个 P2** / **2 个 P3** = **32 个问题**。
+**审计完成 (v2.3)**。共 **8 个 P0** / **16 个 P1** / **8 个 P2** / **2 个 P3** = **34 个问题**。
 
-Phase 1 的 10 个 P0 中有 3 个可在 1 小时内修复 (C4/C5/C6)。建议从这 3 个开始启动修复。
+Phase 1 的 8 个 P0 中有 2 个可在 1 小时内修复 (C4/C6)。建议从这 2 个开始启动修复。
