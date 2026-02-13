@@ -38,3 +38,13 @@
 | P1 | 前端缺失2个API调用: GET /tree (树形查询), GET /{slug}/resources (资源查询) |
 | P1 | parent_id应为parent_slug (创建时) |
 | P2 | v2/v3文档方向不一致，需澄清当前使用哪个版本 |
+
+---
+
+## v2.0 审计复核 (2026-02-13)
+
+**复核结论**: ✅ 无新增发现。v1.0 问题清单仍然有效。
+
+补充说明:
+- **M1 (P2)**: AssetCategoriesPanel.tsx 达 985 行 (超标 3.3x)，属于前端超大文件问题 (CL-3.16)
+- **M5 (P2)**: asset_categories.py 虽通过 Container DI，但与前端字段命名不一致属于 C1 问题的子集

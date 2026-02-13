@@ -88,3 +88,29 @@
 | 🔴 P0 | AI Models update_admin_config 占位符 | ai_models.py |
 | 🟡 P1 | AI Models 7/8 端点无文档 | ai_models.py |
 | 🟡 P1 | Feature Overrides 缺少速率限制和参数验证 | overrides.py |
+
+---
+
+## v2.0 审计补充 (2026-02-13)
+
+### C7: overrides.py 全面违规 — 升级为复合 P0 🆕
+
+v2.0 深度审计发现 overrides.py 的问题远超 v1.0 评估，升级为复合 P0:
+
+| # | 问题类型 | 详情 | 审计维度 |
+|---|---------|------|---------|
+| 1 | DDD 架构违规 | 直接调用 Supabase client，完全绕过 Service/Repository 层 | D5 |
+| 2 | Container DI 缺失 | 未通过 Container 注入，直接在路由中创建依赖 | D5 + CL-3.3 |
+| 3 | CRUD 不完整 | 仅 GET/DELETE 可用，缺 POST/PUT 创建和更新操作 | D1 + D24 |
+| 4 | 参数验证缺失 | feature_key 无白名单校验，可注入任意 key | D6 + CL-3.10 |
+| 5 | 速率限制缺失 | 无 @limiter 装饰器，端点可被无限调用 | D6 |
+| 6 | 错误处理暴露技术细节 | 直接返回 `HTTPException(500, "Failed to...")` | D18 + CL-3.9 |
+| 7 | N+1 查询风险 | 循环构造 response，若后续有嵌套查询会产生 N+1 | D25 |
+| 8 | 细粒度鉴权缺失 | 任何 admin 都能修改任意用户的 override | D22 |
+
+**修复方案**: 需要全面重构 — 参考 campaigns.py/experiments.py 的实现模式:
+1. 创建 `FeatureOverrideEntity` + `FeatureOverrideRepository` + `FeatureOverrideService`
+2. 通过 Container DI 注入
+3. 补全 POST/PUT 端点
+4. 添加 feature_key 白名单 + 速率限制 + 参数验证
+5. 预计工作量: 6h

@@ -75,3 +75,12 @@
 |--------|------|------|
 | 🔴 P0 | 文档完全缺失 (22端点) | 创建 v3 文档: marketing-campaigns.md + marketing-experiments.md |
 | 🟡 P1 | Response Model Mismatch | 验证 list_experiments tuple→Pydantic 转换逻辑 |
+
+---
+
+## v2.0 审计复核 (2026-02-13)
+
+**复核结论**: ✅ 无新增发现。v1.0 问题清单仍然有效。
+
+campaigns + experiments 是 Admin 中合规度较高的模块 (100% API-Frontend 对齐, 100% DDD 合规)。
+主要差距仍在文档覆盖率 (0%)，建议 Phase 4 补充。

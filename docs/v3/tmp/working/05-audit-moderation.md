@@ -16,3 +16,11 @@
 | P1 | 前端未映射 reviewed_by/reviewed_at 字段，无法显示审核员信息 |
 | P2 | ReportStats 缺少 by_reason / by_target_type 聚合统计(v3文档定义了但未实现) |
 | P2 | submitted_at 时间映射用了 updated_at 代替，语义不准确 |
+
+---
+
+## v2.0 审计复核 (2026-02-13)
+
+**复核结论**: ✅ 无新增发现。v1.0 问题清单仍然有效。
+
+跨层审计 (D17-D25) 未发现该模块的额外问题。moderation 模块是 Admin 中合规度最高的模块之一 (8.8/10)。

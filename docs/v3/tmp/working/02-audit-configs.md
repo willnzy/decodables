@@ -61,3 +61,30 @@ notifications.py 和 user_creation_monitoring.py 实际存在，但前端调用�
 | 职责边界 | ✅ | 清晰 |
 
 **总体评分**: 🟡 中 — v2 API 实现完整，核心问题在 v3 文档缺失 + operations 前端对齐
+
+---
+
+## v2.0 审计补充 (2026-02-13)
+
+### 新增发现
+
+| 编号 | 优先级 | 问题 | 审计维度 |
+|------|--------|------|---------|
+| C5 | 🔴 P0 | **tiers.py DDD 违规** — 直接实例化 `TierConfigRepository()` 而非通过 Container DI 注入，违反架构规范，无法统一管理生命周期和测试 mock | D5 (DDD) + CL-3.3 |
+| H3 | 🟡 P1 | **feature_flags.py 全局 Service 导入** — 在模块级导入 `feature_service` 全局实例而非通过 Container DI，测试时无法 mock，生命周期管理不一致 | D5 (DDD) + CL-3.3 |
+| M7 | 🟢 P2 | **config.py batch_update_configs 无事务保护** — 批量更新多个配置项非原子操作，部分失败时状态不一致 | D19 (批量操作原子性) |
+
+### DDD 合规状态更新
+
+| 模块 | v1.0 评估 | v2.0 评估 | 变化 |
+|------|:---:|:---:|------|
+| config.py | ✅ | ✅ | 无变化 |
+| tiers.py | ✅ | ⚠️ **降级** | 发现直接创建 Repository，未通过 Container DI |
+| feature_flags.py | ✅ | ⚠️ **降级** | 发现全局导入 Service 实例 |
+| system.py | ✅ | ✅ | 无变化 |
+
+### 修复建议
+
+1. **C5**: tiers.py 迁移到 `container.tier_config_service` 注入模式 (参考 config.py 实现)
+2. **H3**: feature_flags.py 改为 `Depends(get_feature_service)` 依赖注入
+3. **M7**: batch_update_configs 包裹在数据库事务中，或改用 RPC 原子操作

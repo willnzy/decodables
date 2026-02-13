@@ -84,3 +84,32 @@
 | 🟡 P1 | /events 端点返回未脱敏 PII | monitoring |
 | 🟡 P1 | health + events 端点无前端集成 | monitoring |
 | 🟡 P2 | cancelTask/retryTask stub 函数无后端实现 | tasks |
+
+---
+
+## v2.0 审计补充 (2026-02-13)
+
+### 新增发现
+
+| 编号 | 优先级 | 问题 | 模块 | 审计维度 |
+|------|--------|------|------|---------|
+| C6 | 🔴 P0 | **tasks_mgmt.py 第 165 行缺少 await** — 异步函数调用缺少 `await`，协程对象被创建但从未执行，相关任务操作静默失败，无错误日志 | tasks_mgmt | D3 (异步安全) + CL-4.1 |
+| C10 | 🔴 P0 | **user_creation_monitoring 全面违规** — 复合问题 (见下表) | monitoring | D5+D6+CL-3.10 |
+| H12 | 🟡 P1 | **tasks_mgmt.py 日志格式不统一** — 使用格式字符串而非 `event: "module.action"` 结构化格式 | tasks_mgmt | D23 + CL-4.2 |
+
+### C10 详细分解
+
+| # | 问题类型 | 详情 |
+|---|---------|------|
+| 1 | Container DI 缺失 | 未使用 Container-based DI，直接调用 `UserCreationMonitoringService` 单例 |
+| 2 | 速率限制缺失 | 所有 5 个端点无 @limiter 装饰器，监控端点可被滥用 |
+| 3 | PII 泄露 | `/events` 端点返回未脱敏用户邮箱 (v1.0 的 H9 升级为 C10 的子项) |
+
+### 修复建议
+
+1. **C6** (5min): tasks_mgmt.py 第 165 行添加 `await` 关键字
+2. **C10** (3h):
+   - 迁移到 Container DI: `container = get_container()` → `service = container.user_creation_monitoring_service`
+   - 添加 `@limiter.limit("30/minute")` 到所有端点
+   - `/events` 响应中邮箱使用 `mask_email()` 脱敏
+3. **H12** (30min): 将 `logger.info(f"...")` 改为 `logger.info("admin.task.xxx", extra={...})`

@@ -68,3 +68,21 @@
 | 字段映射 | ⚠️ | 前端credit_type vs 后端bucket |
 
 **总体评分**: 🔴 低 — 优先修复废弃API调用 > 参数对齐 > 文档统一 > 功能补全
+
+---
+
+## v2.0 审计补充 (2026-02-13)
+
+### 新增发现
+
+| 编号 | 优先级 | 问题 | 审计维度 |
+|------|--------|------|---------|
+| H1 | 🟡 P1 | users.py Tier 过滤使用 `free/starter/pro` 字符串而非标准 `t1/t2/t3/t4` 系统代码，若 Tier 显示名称修改过滤逻辑会失效 | D4 (业务规则) |
+| H2 | 🟡 P1 | subscriptions.py 的 `VALID_TARGET_TIERS` 白名单缺少 `t3` (Pro Plan)，管理员无法将用户切换到 Pro Plan | D4 (业务规则) |
+| C8 | 🔴 P0 | 前端 `admin/_lib/types.ts` 使用 `page/page_size`，后端已迁移到 `offset/limit` (v3.26+)，运行时分页失败 — **从 v1.0 的 P1 升级为 P0** | D17 (跨层参数一致性) |
+
+### 修复建议
+
+1. **H1**: 将 users.py 中 `free/starter/pro` 替换为 `TIER_T1/TIER_T2/TIER_T3` 常量 (from `domains.identity.constants`)
+2. **H2**: 在 `VALID_TARGET_TIERS` 列表中添加 `t3`
+3. **C8**: 前端统一迁移到 offset/limit 参数模式，或在 API 层添加兼容转换
