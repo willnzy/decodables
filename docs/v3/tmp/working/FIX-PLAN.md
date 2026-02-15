@@ -1104,9 +1104,13 @@ funnel (metrics): 按日期分解的转化趋势
 
 ---
 
-**总工作量预估**: ~84h (约 2-3 周)
-**文档版本**: v1.2 (二次核实修订)
+**总工作量预估**: ~110h (约 3-4 周) — 含集群 G 前端补全 ~25.5h
+**文档版本**: v1.3 (新增前端完备性审计)
 **日期**: 2026-02-15
+
+**v1.3 更新**:
+- 新增 §附录2: Admin 前端完备性审计，24 个后端 Router 逐端点核查
+- 新增集群 G: 前端缺失端点补全方案
 
 **v1.2 更新**:
 - D-2 (C4): 前端 `updateAdminModelConfig()` 确认为死代码 (未被任何组件调用)，方案从 ❌ 改为 ⚠️
@@ -1338,3 +1342,222 @@ RPC `p_batch_update_configs` **不存在** — 需新建。
 | E-5 M6 | ✅ | — |
 
 **准确率**: 12/25 完全准确 (48%)，12/25 需小幅修正 (48%)，1/25 方案错误 (4%)
+
+---
+
+## 附录2: Admin 前端完备性审计 (v1.3 新增)
+
+> 逐端点核查 24 个后端 admin router 与前端实现的对应关系。
+> 方法: grep @router 装饰器 → grep 前端路径片段 → 检查 Hook/UI 消费链。
+
+### 24 个 Router 覆盖率总览
+
+| # | Router | 前缀 | 前端模块 | 端点数 | ✅ | ⚠️ | ❌ | 覆盖率 |
+|---|--------|------|---------|-------|---|---|---|--------|
+| 1 | users.py | /users | users/ | 13 | 10 | 1 | 2 | 77% |
+| 2 | stats.py | /stats | analytics/ | 18 | 17 | 1 | 0 | 94% |
+| 3 | config.py | /config | configs/ | 8 | 4 | 2 | 2 | 50% |
+| 4 | feature_flags.py | /feature-flags | configs/ | 9 | 6 | 0 | 3 | 67% |
+| 5 | ai_models.py | /ai/models | analytics/ | 8 | 7 | 0 | 1 | 88% |
+| 6 | ai.py | /ai | analytics/ | 5 | 5 | 0 | 0 | 100% |
+| 7 | metrics.py | /metrics | analytics/ | 7 | 7 | 0 | 0 | 100% |
+| 8 | events.py | /events | analytics/ | 5 | 5 | 0 | 0 | 100% |
+| 9 | campaigns.py | /campaigns | marketing/ | 8 | 8 | 0 | 0 | 100% |
+| 10 | experiments.py | /experiments | marketing/ | 14 | 14 | 0 | 0 | 100% |
+| 11 | moderation.py | /moderation | moderation/ | 10 | 10 | 0 | 0 | 100% |
+| 12 | articles.py | /articles | articles/ | 7 | 7 | 0 | 0 | 100% |
+| 13 | themes.py | /themes | themes/ | 14 | 13 | 1 | 0 | 93% |
+| 14 | asset_categories.py | /asset-categories | content/ | 7 | 6 | 0 | 1 | 86% |
+| 15 | static_pages.py | /static-pages | content/ | 7 | 7 | 0 | 0 | 100% |
+| 16 | tiers.py | /tiers | configs/ | 3 | 3 | 0 | 0 | 100% |
+| 17 | subscriptions.py | /subscriptions | users/ | 3 | 3 | 0 | 0 | 100% |
+| 18 | system.py | /system | operations/ | 11 | 6 | 0 | 5 | 55% |
+| 19 | notifications.py | /notifications | operations/ | 11 | 7 | 1 | 3 | 64% |
+| 20 | logs.py | /logs | operations/ | 5 | 2 | 0 | 3 | 40% |
+| 21 | webhooks_retry.py | /webhooks | operations/ | 2 | 2 | 0 | 0 | 100% |
+| 22 | tasks_mgmt.py | /tasks/management | operations/ | 4 | 2 | 1 | 1 | 50% |
+| 23 | user_creation_monitoring.py | /monitoring/user-creation | operations/ | 5 | 3 | 0 | 2 | 60% |
+| 24 | overrides.py | /feature-overrides | (无) | 1 | 0 | 0 | 1 | 0% |
+| | **总计** | | | **189** | **154** | **7** | **24** | **81%** |
+
+### 前端完全缺失的端点 (❌) 明细
+
+#### users.py (2 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `POST /users/{user_id}/discount` | create_user_discount_api | 用户折扣创建，前端无入口 |
+| `GET /projects/feed` | get_projects_feed | 项目 Feed 流，前端无入口 |
+
+#### config.py (2 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `PUT /config/batch` | batch_update_configs_endpoint | 批量更新配置 |
+| `POST /config/rate-limits/preset` | apply_rate_limit_preset | 应用限流预设 |
+
+#### feature_flags.py (3 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `POST /feature-flags/test-evaluation` | test_flag_evaluation | 测试 flag 评估 (开发者工具) |
+| `GET /feature-flags/{key}/audit` | get_flag_audit | flag 变更审计日志 |
+| `GET /feature-flags/client/flags` | get_client_flags | 客户端 flag 查询 (可能非 admin 用途) |
+
+#### ai_models.py (1 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `PUT /ai/models/config/admin` | update_admin_config | 占位端点 — **已在 D-2 中计划删除** |
+
+#### asset_categories.py (1 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `GET /asset-categories/{slug}/resources` | get_category_resources | 查看分类下的资源列表 |
+
+#### system.py (5 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `GET /system/configs/groups` | get_config_groups | 配置分组查询 |
+| `POST /system/configs` | create_config | 新建系统配置 |
+| `DELETE /system/configs/{key}` | delete_config | 删除系统配置 |
+| `GET /system/configs/audit` | get_config_audit | 配置变更审计 |
+| `DELETE /system/cache/key/{key}` | delete_cache_key | 删除单个缓存键 |
+
+#### notifications.py (3 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `POST /notifications/broadcast` | send_broadcast | 广播通知 (legacy?) |
+| `POST /notifications/notification/send` | send_to_user | 单发通知 (legacy?) |
+| `POST /notifications/notification/batch` | send_to_users | 批量通知 (legacy?) |
+
+#### logs.py (3 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `GET /logs/errors/stats` | get_error_stats | 错误统计 |
+| `GET /logs/operations/export` | export_operation_logs | 操作日志导出 |
+| `GET /logs/audit` | get_audit_logs | 审计日志 |
+
+#### tasks_mgmt.py (1 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `GET /tasks/management/logs` | get_task_logs | 任务执行日志 |
+
+#### user_creation_monitoring.py (2 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `GET /monitoring/user-creation/health` | get_user_creation_health | Webhook 健康检查 |
+| `GET /monitoring/user-creation/events` | get_recent_creation_events | 创建事件详情 |
+
+#### overrides.py (1 个)
+
+| 端点 | 函数名 | 说明 |
+|------|--------|------|
+| `GET /feature-overrides/{user_id}` | get_user_overrides | 用户特性覆盖 — **已在 A-1 (C7) 中计划重构** |
+
+### 有函数但未被消费的端点 (⚠️) 明细
+
+| Router | 端点 | 前端函数 | 问题 |
+|--------|------|---------|------|
+| users.py | `POST /users/{user_id}/tier` | changeUserTier | 后端返回 410 Deprecated — **已在 B-2 (C2) 中** |
+| stats.py | `GET /stats/project-details` | getProjectDetails / useProjectDetails | Hook 存在但无 UI 组件消费 |
+| config.py | `GET /config/rate-limits/presets` | 待确认 | 有端点但前端映射方式不标准 |
+| config.py | `POST /config/cache/clear` | 待确认 | 有端点但前端映射方式不标准 |
+| themes.py | 预览相关端点 | 待确认 | 可能存在但未完全映射 |
+| notifications.py | `GET /notification/history` | fetchMessages | 映射方式不标准 |
+| tasks_mgmt.py | `GET /tasks/management/health` | fetchTaskStats | 映射方式不标准 |
+
+---
+
+## 集群 G: 前端缺失端点补全 (v1.3 新增)
+
+> 依据附录2审计结果，对确认缺失的前端端点进行分类处理。
+> 排除已在其他集群中覆盖的问题 (D-2/C4, A-1/C7, B-2/C2)。
+
+### G-1. 需要补全前端的端点 (优先级 P1)
+
+**理由**: 这些端点提供有实际业务价值的功能，admin 需要使用。
+
+#### G-1a. logs 模块补全 (3 个端点)
+
+**文件**: `app/admin/operations/_lib/api.ts` + 对应 hooks + panels
+- `GET /logs/errors/stats` → `fetchErrorStats()` + `useErrorStats` + ErrorLogsPanel 添加统计卡片
+- `GET /logs/operations/export` → `exportOperationLogs()` + OperationLogsPanel 添加导出按钮
+- `GET /logs/audit` → `fetchAuditLogs()` + `useAuditLogs` + 新建 AuditLogsPanel
+
+**工作量**: ~4h
+
+#### G-1b. system 模块补全 (5 个端点)
+
+**文件**: `app/admin/operations/_lib/api.ts` + 对应 hooks + panels
+- `GET /system/configs/groups` → `fetchConfigGroups()` + SystemConfigPanel 分组显示
+- `POST /system/configs` → `createConfig()` + SystemConfigPanel 添加"新建配置"按钮
+- `DELETE /system/configs/{key}` → `deleteConfig()` + SystemConfigPanel 添加删除功能
+- `GET /system/configs/audit` → `fetchConfigAudit()` + 新建 ConfigAuditPanel
+- `DELETE /system/cache/key/{key}` → `deleteCacheKey()` + CacheManagementPanel 单键删除
+
+**工作量**: ~6h
+
+#### G-1c. user_creation_monitoring 补全 (2 个端点)
+
+**文件**: `app/admin/operations/_lib/api.ts` + 对应 hooks + panel
+- `GET /monitoring/user-creation/health` → `getUserCreationHealth()` + UserMonitoringPanel 健康状态指示
+- `GET /monitoring/user-creation/events` → `getCreationEvents()` + UserMonitoringPanel 事件列表
+
+**工作量**: ~2h
+
+#### G-1d. tasks_mgmt 补全 (1 个端点)
+
+**文件**: `app/admin/operations/_lib/api.ts` + 对应 hook
+- `GET /tasks/management/logs` → `fetchTaskLogs()` + `useTaskLogs` + TaskMonitorPanel 日志弹窗
+
+**工作量**: ~1.5h
+
+#### G-1e. feature_flags 补全 (2 个端点)
+
+**文件**: `app/admin/configs/_lib/api.ts` + 对应 hooks + panel
+- `POST /feature-flags/test-evaluation` → `testFlagEvaluation()` + FlagEditorDialog 测试面板
+- `GET /feature-flags/{key}/audit` → `getFlagAudit()` + FlagEditorDialog 审计历史
+
+**工作量**: ~3h
+
+### G-2. 需要决策的端点
+
+**这些端点需要确认是补前端还是删后端**:
+
+| 端点 | 建议 | 理由 |
+|------|------|------|
+| `POST /users/{user_id}/discount` | ❓ 确认业务需求 | 折扣功能是否已纳入产品计划? |
+| `GET /projects/feed` | ❓ 确认业务需求 | 项目 Feed 流是否有 admin 使用场景? |
+| `PUT /config/batch` | 补前端 | 批量配置更新有明确价值 |
+| `POST /config/rate-limits/preset` | 补前端 | 限流预设管理有运维价值 |
+| `GET /asset-categories/{slug}/resources` | 补前端 | 查看分类下资源有管理价值 |
+| `GET /feature-flags/client/flags` | 可能不需要 | 这可能是客户端 SDK 端点而非 admin UI |
+
+### G-3. Legacy 端点 — 建议后端一并清理
+
+**notifications.py legacy 端点** (3 个):
+- `POST /notifications/broadcast` — 已被新版 CRUD + `POST /{id}/send` 替代
+- `POST /notifications/notification/send` — 同上
+- `POST /notifications/notification/batch` — 同上
+
+**建议**: 确认无外部调用后，后端标记 `@deprecated` 或直接删除。
+
+### G 集群工作量汇总
+
+| 子集群 | 端点数 | 工作量 | 优先级 |
+|--------|-------|--------|--------|
+| G-1a logs | 3 | ~4h | P1 |
+| G-1b system | 5 | ~6h | P1 |
+| G-1c monitoring | 2 | ~2h | P1 |
+| G-1d tasks | 1 | ~1.5h | P1 |
+| G-1e feature_flags | 2 | ~3h | P1 |
+| G-2 待决策 | 6 | ~8h (如全补) | P2 |
+| G-3 legacy 清理 | 3 | ~1h | P2 |
+| **合计** | **22** | **~25.5h** | |
