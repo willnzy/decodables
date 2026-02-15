@@ -56,15 +56,20 @@ result = await service.run_task(task_name)
 
 ---
 
-### D-2. C4: AI Models 占位符 — 直接删除
+### D-2. C4: AI Models 占位符 — 前后端死代码同时删除 ⚡ *v1.2 修正*
 
 **根因**: `PUT /ai/models/config/admin` 端点注册但实现为 TODO 占位符
-**文件**: `api/admin/ai_models.py` L179-184
-**方案**: **直接删除该端点** (项目未上线，占位符无存在意义)
-**工作量**: 10min
+**文件**:
+- 后端: `api/admin/ai_models.py` L179-184
+- 前端: `app/admin/analytics/_lib/api.ts` L386-391 (`updateAdminModelConfig()`)
+
+**v1.2 核实结论**: 前端 `updateAdminModelConfig()` 虽然存在，但在整个前端仓库中 **未被任何组件 import 或调用** (死代码)。后端占位端点也无实际功能。两侧均为死代码，可安全独立删除。
+
+**方案**: **前后端同时删除死代码**
+**工作量**: 15min
 
 ```python
-# 删除以下代码块 (L179-184):
+# 后端: 删除以下代码块 (ai_models.py L179-184):
 @router.put("/config/admin")
 @limiter.limit("20/minute")
 async def update_admin_config(request: Request, admin: dict = Depends(require_admin)):
@@ -73,9 +78,17 @@ async def update_admin_config(request: Request, admin: dict = Depends(require_ad
     return {"status": "ok", "message": "Admin config updated"}
 ```
 
-同时检查前端是否有调用此端点，如有则一并删除。
+```typescript
+// 前端: 删除以下代码块 (analytics/_lib/api.ts L386-391):
+export async function updateAdminModelConfig(
+  token: string | null,
+  settings: Record<string, unknown>
+): Promise<AIModelConfig> {
+  return adminPut<AIModelConfig>(token, '/ai/models/config/admin', { settings });
+}
+```
 
-**验证**: `pytest tests/test_app_startup.py -v` + 确认前端无调用
+**验证**: `pytest tests/test_app_startup.py -v` + `npm run build` (前端构建确认无断链)
 
 ---
 
@@ -454,20 +467,21 @@ result = await service.evaluate(...)
 
 ### A-4. H16: tiers.py Container DI 迁移
 
-**现状** (492 行):
+**现状** (492 行): ⚡ *v1.2 修正*
 - Rate limiter ✅ (3/3 端点)
 - 参数验证 ✅
-- 🔴 L111-119: `get_tier_service()` 直接 `new SupabaseConfigRepository(db)` 而非从 Container 获取
-- 🔴 L170-171, L265-266, L353-355: 3 处重复创建 Repository
+- 🔴 L111-119: `get_tier_service()` 直接创建 `SupabaseConfigRepository(db)` 而非从 Container 获取
+- 🔴 L170-171, L265-266, L353-355: 3 处 **额外** 重复创建 Repository (绕过 `get_tier_service()`)
+- **共 4 处直接实例化** (1 处在 `get_tier_service` 定义 + 3 处绕过该函数直接创建)
 
-**方案**: 重写 `get_tier_service()` 使用 Container
+**方案**: 重写 `get_tier_service()` 使用 Container，并消除全部 4 处直接实例化
 
 ```python
 # Before (L111-119):
 async def get_tier_service() -> TierService:
     from core.database import get_async_db_client
     db = await get_async_db_client()
-    config_repo = SupabaseConfigRepository(db)  # ❌ 直接创建
+    config_repo = SupabaseConfigRepository(db)  # ❌ 直接创建 (第 1 处)
     return TierService(config_repo)
 
 # After:
@@ -476,10 +490,10 @@ async def get_tier_service() -> TierService:
     return await container.get_tier_service()  # ✅ 从 Container 获取
 ```
 
-消除 L170-171, L265-266, L353-355 的重复创建 — 统一通过 `Depends(get_tier_service)` 注入。
+消除 L170-171, L265-266, L353-355 的 3 处重复创建 (第 2-4 处) — 统一通过 `Depends(get_tier_service)` 注入。
 
-**前提**: 确认 Container 已注册 TierService，如无则添加。
-**修改文件**: `api/admin/tiers.py`, 可能 `container.py`
+**前提**: Container 未注册 `get_tier_service()`，需同步添加。
+**修改文件**: `api/admin/tiers.py` + `container.py` (添加注册)
 **工作量**: 1h
 **风险**: 🟢 低
 
@@ -1091,12 +1105,17 @@ funnel (metrics): 按日期分解的转化趋势
 ---
 
 **总工作量预估**: ~84h (约 2-3 周)
-**文档版本**: v1.1 (核实修订)
+**文档版本**: v1.2 (二次核实修订)
 **日期**: 2026-02-15
+
+**v1.2 更新**:
+- D-2 (C4): 前端 `updateAdminModelConfig()` 确认为死代码 (未被任何组件调用)，方案从 ❌ 改为 ⚠️
+- A-4 (H16): 恢复 4 处直接实例化 (`get_tier_service` 定义处 + 3 处绕过)，v1.1 改为 3 处有误
+- 准确性统计: 13 ✅ / 12 ⚠️ / 0 ❌ (v1.1: 12 ✅ / 12 ⚠️ / 1 ❌)
 
 ---
 
-## 附录: 代码核实勘误表 (v1.0 → v1.1)
+## 附录: 代码核实勘误表 (v1.0 → v1.1 → v1.2)
 
 > 以下修正基于逐文件代码验证，每项标注 ✅ 准确 / ⚠️ 需修正 / ❌ 方案错误
 
@@ -1105,14 +1124,15 @@ funnel (metrics): 按日期分解的转化趋势
 #### D-1 (C6): ✅ 完全准确
 L165 `result = service.run_task(task_name)` 确认缺 await，方案无需修改。
 
-#### D-2 (C4): ❌ 方案需修正 — 不能直接删除
+#### D-2 (C4): ⚠️ 方案已修正 — 前后端均为死代码 ⚡ *v1.2 再核实*
 
-**问题**: 方案建议"直接删除占位端点"，但前端 `analytics/_lib/api.ts` L390 存在 `updateAdminModelConfig()` 函数调用此端点。
+**v1.1 判断**: ❌ 认为"不能直接删除后端，因前端有调用"
+**v1.2 再核实**: 前端 `updateAdminModelConfig()` (api.ts L386-391) 虽然存在，但在整个前端仓库中 **未被任何组件 import 或调用** — 是死代码。后端占位端点同样无实际功能。
 
-**修正方案**: 改为"前后端同时删除"
+**修正方案**: 前后端死代码同时删除 (已更新到主方案 D-2)
 1. 后端: 删除 `ai_models.py` L179-184 占位端点
-2. 前端: 删除 `analytics/_lib/api.ts` 的 `updateAdminModelConfig()` 函数
-3. 前端: 搜索并删除所有调用 `updateAdminModelConfig` 的组件代码
+2. 前端: 删除 `analytics/_lib/api.ts` L386-391 的 `updateAdminModelConfig()` 函数
+3. ~~前端: 搜索并删除所有调用 `updateAdminModelConfig` 的组件代码~~ → 无调用方，此步无需执行
 
 #### D-3 (H1): ✅ 完全准确
 L89 `pattern="^(t1|t2|t3|free|starter|pro)$"` 确认存在，前端已使用系统代码 t1/t2/t3。
@@ -1163,9 +1183,10 @@ L75 `VALID_TARGET_TIERS = {"t1", "t2"}` 确认，t4 为预留不需添加。
 - 8/9 端点已使用 Container DI ✅ (仅 test_evaluation 用全局 service)
 - 全局 `feature_service` 仅用于 test_evaluation (L585)，影响范围有限
 
-#### A-4 (H16): ⚠️ 实例化次数修正
+#### A-4 (H16): ⚠️ 实例化次数修正 ⚡ *v1.2 再核实*
 
-**修正**: 方案说"4 处直接实例化 (L118/171/266/355)"，实际是 **3 处** (L169-171, L264-266, L353-355)。L111-119 的 `get_tier_service()` 是定义函数，非直接实例化。
+**v1.1 判断**: "实际 3 处非 4 处，L111-119 是定义函数不算直接实例化"
+**v1.2 再核实**: `get_tier_service()` (L111-119) 虽然是函数定义，但其内部 **直接创建** `SupabaseConfigRepository(db)` — 这正是需要修复的目标 (改为从 Container 获取)。因此应算作第 1 处直接实例化，加上 L170-171/L265-266/L353-355 三处绕过该函数的重复创建，**共 4 处直接实例化** — 恢复原方案 v1.0 的计数。
 
 Container **未注册** `get_tier_service()` — 需同步添加。
 
@@ -1291,7 +1312,7 @@ RPC `p_batch_update_configs` **不存在** — 需新建。
 | 方案 | 准确性 | 核心修正 |
 |------|:---:|---------|
 | D-1 C6 | ✅ | — |
-| D-2 C4 | ❌ | 前端有调用，需前后端同时删除 |
+| D-2 C4 | ⚠️ | 前端函数存在但为死代码 (未被调用)，前后端同时删除 |
 | D-3 H1 | ✅ | — |
 | D-4 H2 | ✅ | — |
 | D-5 H4 | ⚠️ | 补充前端参数和 Service 方法 |
@@ -1299,7 +1320,7 @@ RPC `p_batch_update_configs` **不存在** — 需新建。
 | A-1 C7 | ⚠️ | get_supabase_client 不存在 (运行时 bug)，已部分使用 Container |
 | A-2 C10 | ✅ | Container 需添加注册 |
 | A-3 H3 | ⚠️ | Rate limiter 0/9 非 1/9 |
-| A-4 H16 | ⚠️ | 3 处非 4 处，Container 需添加注册 |
+| A-4 H16 | ⚠️ | 恢复 4 处 (含 get_tier_service 定义处)，Container 需添加注册 |
 | B-1 C1 | ⚠️ | 需先确认 id/slug 关系，HTTP 方法也不一致 |
 | B-2 C2 | ✅ | — |
 | B-3 C8 | ⚠️ | 6+ 处非 5+ |
